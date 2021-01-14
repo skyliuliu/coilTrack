@@ -1,0 +1,195 @@
+import datetime
+import math
+import multiprocessing
+import time
+from queue import Queue
+import sys
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pyqtgraph as pg
+from filterpy.kalman import UnscentedKalmanFilter as UKF
+from filterpy.kalman import MerweScaledSigmaPoints
+from filterpy.stats import plot_covariance
+from scipy import linalg
+
+plt.rcParams['font.sans-serif'] = ['SimHei']
+plt.rcParams['axes.unicode_minus'] = False
+
+
+def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02, i=5, freq=20000, d=(0, 0, 0.2),
+                    em1=(0, 0, 1), em2=(0, 0, 1)):
+    '''
+    计算发射线圈在接收线圈中产生的感应电动势
+    **************************
+    *假设：                   *
+    *1、线圈均可近似为磁偶极矩  *
+    *2、线圈之间静止           *
+    **************************
+    :param n1: 发射线圈匝数 [1]
+    :param nr1: 发射线圈层数 [1]
+    :param n2: 接收线圈匝数 [1]
+    :param nr2: 接收线圈层数 [1]
+    :param r1: 发射线圈内径 [mm]
+    :param d1: 发射线圈线径 [mm]
+    :param r2: 接收线圈内径 [mm]
+    :param d2: 接收线圈线径 [mm]
+    :param i: 激励电流的幅值 [A]
+    :param freq: 激励信号的频率 [Hz]
+    :param d: 初级线圈中心到次级线圈中心的位置矢量 [m]
+    :param em1: 发射线圈的朝向 [1]
+    :param em2: 接收线圈的朝向 [1]
+    :return E: 感应电压 [1e-6V]
+    '''
+    dNorm = np.linalg.norm(d)
+    er = d / dNorm
+
+    em1 /= np.linalg.norm(em1)
+    em2 /= np.linalg.norm(em2)
+
+    # 精确计算线圈的面积，第i层线圈的面积为pi * (r + d * i) **2
+    S1 = n1 // nr1 * math.pi * sum([(r1 + d1 * j) ** 2 for j in range(nr1)]) / 1000000
+    S2 = n2 // nr2 * math.pi * sum([(r2 + d2 * k) ** 2 for k in range(nr2)]) / 1000000
+
+    B = np.divide(pow(10, -7) * i * S1 * (3 * np.dot(er, em1) * er - em1), dNorm ** 3)
+
+    E = 2 * math.pi * pow(10, -7) * freq * i * S1 * S2 / dNorm ** 3 * (
+                3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2))
+    return E * 1000000  # 单位1e-6V
+
+
+def q2m(q0, q1, q2, q3):
+    qq2 = (q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
+    mx = 2 * (-q0 * q2 + q1 * q3) / qq2
+    my = 2 * (q0 * q1 + q2 * q3) / qq2
+    mz = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3) / qq2
+    return [round(mx, 2), round(my, 2), round(mz, 2)]
+
+
+class Tracker:
+    distance = 0.07  # 初级线圈之间的距离[m]
+    coilrows = 4
+    coilcols = 4
+    CAlength = distance * (coilrows - 1)
+    CAwidth = distance * (coilcols - 1)
+    coilArray = np.zeros((coilrows * coilcols, 3))
+    for row in range(coilrows):
+        for col in range(coilcols):
+            coilArray[row * coilrows + col] = np.array(
+                [-0.5 * CAlength + distance * col, 0.5 * CAwidth - distance * row, 0])
+
+    def __init__(self, x0):
+        self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
+        self.measureNum = self.coilrows * self.coilcols * 3
+        self.dt = 0.01  # 时间间隔[s]
+
+        self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
+        self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
+        self.ukf.x = np.array([0, 0.2, 0.3, 1,1, 0, 0])  # 初始值
+        self.x0 = x0  # 计算NEES的真实值
+
+        self.ukf.R *= 25
+        self.ukf.P = np.eye(self.stateNum) * 0.01
+        for i in range(3, 7):
+            self.ukf.P[i, i] = 0.01
+        self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
+        for i in range(3, 7):
+            self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
+
+        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
+        self.m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
+
+    def f(self, x, dt):
+        A = np.eye(self.stateNum)
+        return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
+
+    def h(self, state):
+        dArray0 = state[:3] - self.coilArray
+        q0, q1, q2, q3 = state[3:7]
+        em2 = np.array(q2m(q0, q1, q2, q3))
+        E = np.zeros(self.measureNum)
+        for i, d in enumerate(dArray0):
+            E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
+            E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
+            E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+            # E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+        return E
+
+    def run(self, Edata, state):
+        # 输出预测结果
+        print(r'pos={}m, e_moment={}'.format(self.pos, self.m))
+
+        z = np.hstack(Edata[:])
+        # 附上时间戳
+        t0 = datetime.datetime.now()
+        # 开始预测和更新
+        self.ukf.predict()
+        self.ukf.update(z)
+        timeCost = (datetime.datetime.now() - t0).total_seconds()
+        # state[:] = np.concatenate((self.ukf.x, np.array([timeCost])))  # 输出的结果
+
+        Estate = self.h(self.ukf.x)
+        print('Emax={:.2f}, Emin={:.2f}'.format(max(abs(Estate)), min(abs(Estate))))
+        # 计算NEES值
+        x = self.x0 - self.ukf.x
+        nees = np.dot(x.T, linalg.inv(self.ukf.P)).dot(x)
+        print('NEES={:.1f}'.format(nees))
+
+        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
+        self.m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
+
+    def plotP(self, state, index):
+        xtruth = state[:3]
+        xtruth[1] += index  # 获取坐标真实值
+        mtruth = q2m(state[3], state[4], state[5], state[6])  # 获取姿态真实值
+        pos2 = np.zeros(2)
+        pos2[0], pos2[1] = self.pos[1] + index, self.pos[2]  # 预测的坐标值
+        Pxy = self.ukf.P[1:3, 1:3]  # 坐标的误差协方差
+        plot_covariance(mean=pos2, cov=Pxy, fc='g', alpha=0.3, title='坐标和姿态的误差协方差')
+        plt.text(pos2[0], pos2[1], int(index * 10), fontsize=9)
+        plt.plot(xtruth[1], xtruth[2], 'ro')  # 画出真实值
+        plt.text(xtruth[1], xtruth[2], int(index * 10), fontsize=9)
+
+        # 添加磁矩方向箭头
+        plt.annotate(text='', xy=(pos2[0] + self.m[1] * 0.05, pos2[1] + self.m[2] * 0.05), xytext=(pos2[0], pos2[1]),
+                     color="blue", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="b"))
+        plt.annotate(text='', xy=(xtruth[1] + mtruth[1] * 0.05, xtruth[2] + mtruth[2] * 0.05),
+                     xytext=(xtruth[1], xtruth[2]),
+                     color="red", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="r"))
+        # 添加坐标轴标识
+        plt.xlabel('y/m')
+        plt.ylabel('z/m')
+        plt.gca().grid(b=True)
+        plt.pause(0.05)
+
+
+if __name__ == '__main__':
+    # state = multiprocessing.Array('f', range(7))  # x, y, z, q0, q1, q2, q3
+    # 使用模拟的实测结果，测试UKF滤波器的参数设置是否合理
+    state = [0, 0.1, 0.2, 1, 1, 0, 0]
+    mp = Tracker(state)
+    E = np.zeros(mp.measureNum)
+    dArray = state[:3] - mp.coilArray
+    for i, d in enumerate(dArray):
+        E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0))  # x线圈阵列产生的感应电压中间值
+        E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0))  # y线圈阵列产生的感应电压中间值
+        E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1))  # z线圈阵列产生的感应电压中间值
+        # E[i] = inducedVolatage(d=d, em1=(0, 0, 1))  # 单向线圈阵列产生的感应电压中间值
+
+    n = 30  # 迭代次数
+    std = 5
+    Esim = np.zeros((mp.measureNum, n))
+    for j in range(mp.measureNum):
+        Esim[j, :] = np.random.normal(E[j], std, n)
+
+    for i in range(n):
+        print('=========={}=========='.format(i))
+
+        plt.ion()
+        mp.plotP(state, i * 0.1)
+        if i == n - 1:
+            plt.ioff()
+            plt.show()
+
+        mp.run(Esim[:, i], state)
+        time.sleep(0.1)
