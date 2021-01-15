@@ -23,7 +23,7 @@ def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02,
     计算发射线圈在接收线圈中产生的感应电动势
     **************************
     *假设：                   *
-    *1、线圈均可近似为磁偶极矩  *
+    *1、线圈均可等效为磁偶极矩  *
     *2、线圈之间静止           *
     **************************
     :param n1: 发射线圈匝数 [1]
@@ -80,12 +80,12 @@ class Tracker:
 
     def __init__(self, x0):
         self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
-        self.measureNum = self.coilrows * self.coilcols * 3
+        self.measureNum = self.coilrows * self.coilcols * 1
         self.dt = 0.01  # 时间间隔[s]
 
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0, 0.2, 0.3, 1,1, 0, 0])  # 初始值
+        self.ukf.x = np.array([0, 0, 0.2, 1, 0, 0, 0])  # 初始值
         self.x0 = x0  # 计算NEES的真实值
 
         self.ukf.R *= 25
@@ -109,10 +109,10 @@ class Tracker:
         em2 = np.array(q2m(q0, q1, q2, q3))
         E = np.zeros(self.measureNum)
         for i, d in enumerate(dArray0):
-            E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
-            E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
-            E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
-            # E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+            # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
+            # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
+            # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+            E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
         return E
 
     def run(self, Edata, state):
@@ -145,7 +145,7 @@ class Tracker:
         pos2 = np.zeros(2)
         pos2[0], pos2[1] = self.pos[1] + index, self.pos[2]  # 预测的坐标值
         Pxy = self.ukf.P[1:3, 1:3]  # 坐标的误差协方差
-        plot_covariance(mean=pos2, cov=Pxy, fc='g', alpha=0.3, title='坐标和姿态的误差协方差')
+        plot_covariance(mean=pos2, cov=Pxy, fc='g', alpha=0.3, title='线圈定位过程仿真')
         plt.text(pos2[0], pos2[1], int(index * 10), fontsize=9)
         plt.plot(xtruth[1], xtruth[2], 'ro')  # 画出真实值
         plt.text(xtruth[1], xtruth[2], int(index * 10), fontsize=9)
@@ -166,15 +166,15 @@ class Tracker:
 if __name__ == '__main__':
     # state = multiprocessing.Array('f', range(7))  # x, y, z, q0, q1, q2, q3
     # 使用模拟的实测结果，测试UKF滤波器的参数设置是否合理
-    state = [0, 0.1, 0.2, 1, 1, 0, 0]
+    state = [0.1, 0.1, 0.3, 1, 1, 1, 0]
     mp = Tracker(state)
     E = np.zeros(mp.measureNum)
     dArray = state[:3] - mp.coilArray
     for i, d in enumerate(dArray):
-        E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0))  # x线圈阵列产生的感应电压中间值
-        E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0))  # y线圈阵列产生的感应电压中间值
-        E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1))  # z线圈阵列产生的感应电压中间值
-        # E[i] = inducedVolatage(d=d, em1=(0, 0, 1))  # 单向线圈阵列产生的感应电压中间值
+        # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0))  # x线圈阵列产生的感应电压中间值
+        # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0))  # y线圈阵列产生的感应电压中间值
+        # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1))  # z线圈阵列产生的感应电压中间值
+        E[i] = inducedVolatage(d=d, em1=(0, 0, 1))  # 单向线圈阵列产生的感应电压中间值
 
     n = 30  # 迭代次数
     std = 5
