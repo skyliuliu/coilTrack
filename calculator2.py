@@ -1,10 +1,13 @@
 import datetime
 import math
-import json
+import multiprocessing
 import time
+from queue import Queue
+import sys
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pyqtgraph as pg
 from filterpy.kalman import UnscentedKalmanFilter as UKF
 from filterpy.kalman import MerweScaledSigmaPoints
 from filterpy.stats import plot_covariance
@@ -16,7 +19,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02, i=5, freq=20000, d=(0, 0, 0.2),
                     em1=(0, 0, 1), em2=(0, 0, 1)):
-    """
+    '''
     计算发射线圈在接收线圈中产生的感应电动势
     **************************
     *假设：                   *
@@ -27,9 +30,9 @@ def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02,
     :param nr1: 发射线圈层数 [1]
     :param n2: 接收线圈匝数 [1]
     :param nr2: 接收线圈层数 [1]
-    :param r1: 发射线圈内半径 [mm]
+    :param r1: 发射线圈内径 [mm]
     :param d1: 发射线圈线径 [mm]
-    :param r2: 接收线圈内半径 [mm]
+    :param r2: 接收线圈内径 [mm]
     :param d2: 接收线圈线径 [mm]
     :param i: 激励电流的幅值 [A]
     :param freq: 激励信号的频率 [Hz]
@@ -37,7 +40,7 @@ def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02,
     :param em1: 发射线圈的朝向 [1]
     :param em2: 接收线圈的朝向 [1]
     :return E: 感应电压 [1e-6V]
-    """
+    '''
     dNorm = np.linalg.norm(d)
     er = d / dNorm
 
@@ -60,11 +63,23 @@ def q2m(q0, q1, q2, q3):
     mx = 2 * (q0 * q2 + q1 * q3) / qq2
     my = 2 * (-q0 * q1 + q2 * q3) / qq2
     mz = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3) / qq2
-    return [round(mx, 3), round(my, 3), round(mz, 3)]
+    return [round(mx, 2), round(my, 2), round(mz, 2)]
 
+def m2e(mx, my, mz):
+    pitch = math.acos(mz)
+    roll = math.atan2(my, mx)
+    yaw = math.atan2(my, mx)
+
+
+def e2q(pitch, roll, yaw):
+    q0 = math.cos(roll * 0.5) * math.cos(pitch * 0.5) * math.cos(yaw * 0.5) + math.sin(roll * 0.5) * math.sin(pitch * 0.5) * math.sin(yaw * 0.5)
+    q1 = math.cos(roll * 0.5) * math.sin(pitch * 0.5) * math.cos(yaw * 0.5) - math.sin(roll * 0.5) * math.cos(pitch * 0.5) * math.sin(yaw * 0.5)
+    q2 = math.sin(roll * 0.5) * math.cos(pitch * 0.5) * math.cos(yaw * 0.5) + math.cos(roll * 0.5) * math.sin(pitch * 0.5) * math.sin(yaw * 0.5)
+    q3 = math.cos(roll * 0.5) * math.cos(pitch * 0.5) * math.sin(yaw * 0.5) - math.sin(roll * 0.5) * math.sin(pitch * 0.5) * math.cos(yaw * 0.5)
+    return (q0, q1, q2, q3)
 
 class Tracker:
-    distance = 0.15  # 初级线圈之间的距离[m]
+    distance = 0.07  # 初级线圈之间的距离[m]
     coilrows = 4
     coilcols = 4
     CAlength = distance * (coilrows - 1)
@@ -76,25 +91,25 @@ class Tracker:
                 [-0.5 * CAlength + distance * col, 0.5 * CAwidth - distance * row, 0])
 
     def __init__(self, x0):
-        self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
+        self.stateNum = 6  # 预测量：x, y, z, mx, my, mz
         self.measureNum = self.coilrows * self.coilcols * 1
         self.dt = 0.01  # 时间间隔[s]
 
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0, 0, 0.2, 1, 0, 0, 0])  # 初始值
+        self.ukf.x = np.array([0, 0.2, 0.3, 0, 0, -1])  # 初始值
         self.x0 = x0  # 计算NEES的真实值
 
         self.ukf.R *= 25
         self.ukf.P = np.eye(self.stateNum) * 0.01
-        for i in range(3, 7):
+        for i in range(3, self.stateNum):
             self.ukf.P[i, i] = 0.01
-        self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
-        for i in range(3, 7):
-            self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
+        self.ukf.Q = np.eye(self.stateNum) * 0.01 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
+        for i in range(3, self.stateNum):
+            self.ukf.Q[i, i] = 0.0001  # 姿态的过程误差
 
-        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-        self.m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
+        self.pos = np.round(self.ukf.x[:3], 3)
+        self.m = np.round(self.ukf.x[3:] / np.linalg.norm(self.ukf.x[3:]), 2)
 
     def f(self, x, dt):
         A = np.eye(self.stateNum)
@@ -102,8 +117,8 @@ class Tracker:
 
     def h(self, state):
         dArray0 = state[:3] - self.coilArray
-        q0, q1, q2, q3 = state[3:7]
-        em2 = np.array(q2m(q0, q1, q2, q3))
+        mNorm = np.linalg.norm(state[3:])
+        em2 = state[3:] / mNorm
         E = np.zeros(self.measureNum)
         for i, d in enumerate(dArray0):
             # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
@@ -112,17 +127,17 @@ class Tracker:
             E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
         return E
 
-    def run(self, Edata):
+    def run(self, Edata, state):
         # 输出预测结果
         print(r'pos={}m, e_moment={}'.format(self.pos, self.m))
 
         z = np.hstack(Edata[:])
         # 附上时间戳
-        # t0 = datetime.datetime.now()
+        t0 = datetime.datetime.now()
         # 开始预测和更新
         self.ukf.predict()
         self.ukf.update(z)
-        # timeCost = (datetime.datetime.now() - t0).total_seconds()
+        timeCost = (datetime.datetime.now() - t0).total_seconds()
         # state[:] = np.concatenate((self.ukf.x, np.array([timeCost])))  # 输出的结果
 
         Estate = self.h(self.ukf.x)
@@ -132,13 +147,13 @@ class Tracker:
         nees = np.dot(x.T, linalg.inv(self.ukf.P)).dot(x)
         print('NEES={:.1f}'.format(nees))
 
-        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-        self.m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
+        self.pos = np.round(self.ukf.x[:3], 3)
+        self.m = np.round(self.ukf.x[3:] / np.linalg.norm(self.ukf.x[3:]), 2)
 
     def plotP(self, state, index):
-        xtruth = state[:3]
-        xtruth[1] += index  # 获取坐标真实值
-        mtruth = q2m(state[3], state[4], state[5], state[6])  # 获取姿态真实值
+        xtruth = state[:3]  # 获取坐标真实值
+        xtruth[1] += index
+        mtruth = state[3:]  # 获取姿态真实值
         pos2 = np.zeros(2)
         pos2[0], pos2[1] = self.pos[1] + index, self.pos[2]  # 预测的坐标值
         Pxy = self.ukf.P[1:3, 1:3]  # 坐标的误差协方差
@@ -161,47 +176,24 @@ class Tracker:
 
 
 if __name__ == '__main__':
-    # state = multiprocessing.Array('f', range(7))  # x, y, z, q0, q1, q2, q3
     # 使用模拟的实测结果，测试UKF滤波器的参数设置是否合理
-    state = [0, 0.2, 0.2, 1, 1, 0, 0]
+    state = [0, 0.1, 0.2, 0, 0, -1]
     mp = Tracker(state)
-    nmax = 30  # 迭代次数
     E = np.zeros(mp.measureNum)
-    Esim = np.zeros((mp.measureNum, nmax))
-    useSaved = False
+    em1Sim = state[3:]
+    dArray = state[:3] - mp.coilArray
+    for i, d in enumerate(dArray):
+        # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0))  # x线圈阵列产生的感应电压中间值
+        # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0))  # y线圈阵列产生的感应电压中间值
+        # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1))  # z线圈阵列产生的感应电压中间值
+        E[i] = inducedVolatage(d=d, em1=em1Sim)  # 单向线圈阵列产生的感应电压中间值
 
-    if useSaved:
-        f = open('Esim.json', 'r')
-        simData = json.load(f)
-        for j in range(mp.measureNum):
-            for k in range(nmax):
-                Esim[j, k] = simData.get('Esim{}-{}'.format(j, k), 0)
-        print('++++read saved Esim data+++')
-    else:
-        std = 5
-        em1Sim = q2m(*state[3:])
-        dArray = state[:3] - mp.coilArray
-        for i, d in enumerate(dArray):
-            # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em1Sim)  # x线圈阵列产生的感应电压中间值
-            # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em1Sim)  # y线圈阵列产生的感应电压中间值
-            # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em1Sim)  # z线圈阵列产生的感应电压中间值
-            E[i] = inducedVolatage(d=d, em2=em1Sim)  # 单向线圈阵列产生的感应电压中间值
+    n = 20  # 迭代次数
+    std = 5
+    Esim = np.zeros((mp.measureNum, n))
+    for j in range(mp.measureNum):
+        Esim[j, :] = np.random.normal(E[j], std, n)
 
-        simData = {}
-        for j in range(mp.measureNum):
-            Esim[j, :] = np.random.normal(E[j], std, nmax)
-            # plt.hist(Esim[j, :], bins=25, histtype='bar', rwidth=2)
-            # plt.show()
-            for k in range(nmax):
-                simData['Esim{}-{}'.format(j, k)] = Esim[j, k]
-        # 保存模拟数据到本地
-        # f = open('Esim.json', 'w')
-        # json.dump(simData, f, indent=4)
-        # f.close()
-        # print('++++save new Esim data+++')
-
-    # 运行模拟数据
-    n = 30
     for i in range(n):
         print('=========={}=========='.format(i))
 
@@ -211,5 +203,5 @@ if __name__ == '__main__':
             plt.ioff()
             plt.show()
 
-        mp.run(Esim[:, i])
+        mp.run(Esim[:, i], state)
         time.sleep(0.1)
