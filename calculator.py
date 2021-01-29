@@ -65,8 +65,8 @@ def q2m(q0, q1, q2, q3):
 
 class Tracker:
     distance = 0.15  # 初级线圈之间的距离[m]
-    coilrows = 4
-    coilcols = 4
+    coilrows = 5
+    coilcols = 5
     CAlength = distance * (coilrows - 1)
     CAwidth = distance * (coilcols - 1)
     coilArray = np.zeros((coilrows * coilcols, 3))
@@ -163,7 +163,7 @@ class Tracker:
 if __name__ == '__main__':
     # state = multiprocessing.Array('f', range(7))  # x, y, z, q0, q1, q2, q3
     # 使用模拟的实测结果，测试UKF滤波器的参数设置是否合理
-    state = [0, 0.2, 0.2, 1, 1, 0, 0]
+    state = [0, 0.2, 0.4, 0, 1, 0, 0]
     mp = Tracker(state)
     nmax = 30  # 迭代次数
     E = np.zeros(mp.measureNum)
