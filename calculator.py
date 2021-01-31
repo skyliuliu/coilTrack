@@ -14,7 +14,7 @@ plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 
-def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02, i=5, freq=20000, d=(0, 0, 0.2),
+def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, i=2, freq=20000, d=(0, 0, 0.2),
                     em1=(0, 0, 1), em2=(0, 0, 1)):
     """
     计算发射线圈在接收线圈中产生的感应电动势
@@ -51,8 +51,52 @@ def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02,
     B = np.divide(pow(10, -7) * i * S1 * (3 * np.dot(er, em1) * er - em1), dNorm ** 3)
 
     E = 2 * math.pi * pow(10, -7) * freq * i * S1 * S2 / dNorm ** 3 * (
-                3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2))
+            3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2))
     return E * 1000000  # 单位1e-6V
+
+
+def solenoidB(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2, freq=20000, d=(0, 0, 200),
+              em1=(0, 0, 1), em2=(0, 0, 1)):
+    """
+        计算发射线圈在空间任意一点产生的磁场
+        :param n1: 发射线圈匝数 [1]
+        :param nr1: 发射线圈层数 [1]
+        :param n2: 接收线圈匝数 [1]
+        :param nr2: 接收线圈层数 [1]
+        :param r1: 发射线圈内半径 [mm]
+        :param d1: 发射线圈线径 [mm]
+        :param r2: 接收线圈内半径 [mm]
+        :param d2: 接收线圈线径 [mm]
+        :param ii: 激励电流的幅值 [A]
+        :param freq: 激励信号的频率 [Hz]
+        :param d: 初级线圈中心到次级线圈中心的位置矢量 [mm]
+        :param em1: 发射线圈的朝向 [1]
+        :param em2: 接收线圈的朝向 [1]
+        :return E: 感应电压 [1e-6V]
+        """
+    nh = int(n1 / nr1)
+    ntheta = 100
+    theta = np.linspace(0, 2 * math.pi, ntheta, endpoint=False)
+    r = np.linspace(r1, r1 + nr1 * d1, nr1, endpoint=False)
+    h = np.linspace(0, nh * d1, nh, endpoint=False)
+    hh = np.array([[0, 0, hi] for hi in h])
+
+    drxy = np.array([[math.cos(th), math.sin(th), 0] for th in theta])  # 电流元在xy平面的位置方向
+    dlxy = np.array([np.array([-math.sin(th), math.cos(th), 0]) for th in theta])  # 电流元在xy平面的电流方向
+
+    dr = np.zeros((ntheta * n1, 3), dtype=np.float)
+    dl = np.zeros((ntheta * n1, 3), dtype=np.float)
+    for i in range(nr1):
+        for j in range(nh):
+            dr[ntheta * (i * nh + j): ntheta * (i * nh + j + 1), :] = r[i] * drxy + hh[j]
+            dl[ntheta * (i * nh + j): ntheta * (i * nh + j + 1), :] = r[i] * 2 * math.pi / ntheta * dlxy
+
+    er = d - dr
+    rNorm = np.linalg.norm(er, axis=1, keepdims=True)
+    er0 = er / rNorm
+    dB = 1e-4 * ii * np.cross(dl, er0) / rNorm ** 2
+    B = np.array([sum(dB[:, i]) for i in range(3)])
+    return B
 
 
 def q2m(q0, q1, q2, q3):
@@ -65,8 +109,8 @@ def q2m(q0, q1, q2, q3):
 
 class Tracker:
     distance = 0.15  # 初级线圈之间的距离[m]
-    coilrows = 5
-    coilcols = 5
+    coilrows = 4
+    coilcols = 4
     CAlength = distance * (coilrows - 1)
     CAwidth = distance * (coilcols - 1)
     coilArray = np.zeros((coilrows * coilcols, 3))
@@ -156,14 +200,15 @@ class Tracker:
         # 添加坐标轴标识
         plt.xlabel('y/m')
         plt.ylabel('z/m')
+        plt.gca().set_aspect('equal', adjustable='box')
         plt.gca().grid(b=True)
         plt.pause(0.05)
 
 
-if __name__ == '__main__':
-    # state = multiprocessing.Array('f', range(7))  # x, y, z, q0, q1, q2, q3
+def sim(state=None):
     # 使用模拟的实测结果，测试UKF滤波器的参数设置是否合理
-    state = [0, 0.2, 0.4, 0, 1, 0, 0]
+    if state is None:
+        state = [0, 0.2, 0.4, 0, 0, 1, 1]
     mp = Tracker(state)
     nmax = 30  # 迭代次数
     E = np.zeros(mp.measureNum)
@@ -212,4 +257,13 @@ if __name__ == '__main__':
             plt.show()
 
         mp.run(Esim[:, i])
-        time.sleep(0.1)
+        time.sleep(0.05)
+
+
+if __name__ == '__main__':
+    # sim(state=[0, 0.2, 0.3, 0, 1, 0, 0])
+    n = 9
+    dzs = np.linspace(0.1, 0.4, n)
+    B = solenoidB()
+    E = inducedVolatage()
+    print(B)
