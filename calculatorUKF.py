@@ -9,6 +9,8 @@ from filterpy.kalman import UnscentedKalmanFilter as UKF
 from filterpy.kalman import MerweScaledSigmaPoints
 from filterpy.stats import plot_covariance
 
+from predictorViewer import q2R, plotP, plotErr
+
 plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -103,13 +105,6 @@ def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2, 
     return E
 
 
-def q2m(q0, q1, q2, q3):
-    qq2 = (q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
-    mx = 2 * (q0 * q2 + q1 * q3) / qq2
-    my = 2 * (-q0 * q1 + q2 * q3) / qq2
-    mz = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3) / qq2
-    return [round(mx, 3), round(my, 3), round(mz, 3)]
-
 
 class Tracker:
     distance = 0.15  # 初级线圈之间的距离[m]
@@ -123,17 +118,17 @@ class Tracker:
             coilArray[row * coilrows + col] = np.array(
                 [-0.5 * CAlength + distance * col, 0.5 * CAwidth - distance * row, 0])
 
-    def __init__(self, x0):
+    def __init__(self, sensor_std, state0, state):
         self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
         self.measureNum = self.coilrows * self.coilcols * 1
         self.dt = 0.01  # 时间间隔[s]
 
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0, 0, 0.2, 1, 0, 0, 0])  # 初始值
-        self.x0 = x0  # 计算NEES的真实值
+        self.ukf.x = state0.copy()  # 初始值
+        self.x0 = state  # 计算NEES的真实值
 
-        self.ukf.R *= 25
+        self.ukf.R *= sensor_std
         self.ukf.P = np.eye(self.stateNum) * 0.01
         for i in range(3, 7):
             self.ukf.P[i, i] = 0.01
@@ -142,7 +137,7 @@ class Tracker:
             self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
 
         self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-        self.m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
+        self.m = q2R(self.ukf.x[3: 7])[:, -1]
 
     def f(self, x, dt):
         A = np.eye(self.stateNum)
@@ -150,86 +145,67 @@ class Tracker:
 
     def h(self, state):
         dArray0 = state[:3] - self.coilArray
-        q0, q1, q2, q3 = state[3:7]
-        em2 = np.array(q2m(q0, q1, q2, q3))
+        em2 = np.array(q2R(state[3:7]))[:, -1]
         E = np.zeros(self.measureNum)
         for i, d in enumerate(dArray0):
             # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
             # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
             # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
-            E[i] = solenoid(d=d, em1=(0, 0, 1), em2=em2)
+            E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
         return E
 
-    def run(self, Edata):
-        # 输出预测结果
-        print(r'pos={}m, e_moment={}'.format(self.pos, self.m))
-
+    def run(self, printBool, Edata):
         z = np.hstack(Edata[:])
         # 附上时间戳
-        t0 = datetime.datetime.now()
+        self.t0 = datetime.datetime.now()
         # 开始预测和更新
         self.ukf.predict()
         self.ukf.update(z)
-        timeCost = (datetime.datetime.now() - t0).total_seconds()
-        # print('timeCost={:.3f}'.format(timeCost))
-        # state[:] = np.concatenate((self.ukf.x, np.array([timeCost])))  # 输出的结果
 
-        Estate = self.h(self.ukf.x)
-        print('Emax={:.2f}, Emin={:.2f}'.format(max(abs(Estate)), min(abs(Estate))))
+        if printBool:
+            self.statePrint()
+
+    def statePrint(self,):
+        self.pos = np.round(self.ukf.x[:3], 3)
+        self.m = np.round(q2R(self.ukf.x[3: 7])[:, -1], 3)
+
+        timeCost = (datetime.datetime.now() - self.t0).total_seconds()
+        Estate = self.h(self.ukf.x)     # 计算每个状态对应的感应电压
         # 计算NEES值
         x = self.x0 - self.ukf.x
         nees = np.dot(x.T, np.linalg.inv(self.ukf.P)).dot(x)
-        print('NEES={:.1f}'.format(nees))
-
-        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-        self.m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
-
-    def plotP(self, state, index):
-        xtruth = state[:3]
-        xtruth[1] += index  # 获取坐标真实值
-        mtruth = q2m(state[3], state[4], state[5], state[6])  # 获取姿态真实值
-        pos2 = np.zeros(2)
-        pos2[0], pos2[1] = self.pos[1] + index, self.pos[2]  # 预测的坐标值
-        Pxy = self.ukf.P[1:3, 1:3]  # 坐标的误差协方差
-        plot_covariance(mean=pos2, cov=Pxy, fc='g', alpha=0.3, title='线圈定位过程仿真')
-        plt.text(pos2[0], pos2[1], int(index * 10), fontsize=9)
-        plt.plot(xtruth[1], xtruth[2], 'ro')  # 画出真实值
-        plt.text(xtruth[1], xtruth[2], int(index * 10), fontsize=9)
-
-        # 添加磁矩方向箭头
-        plt.annotate(text='', xy=(pos2[0] + self.m[1] * 0.05, pos2[1] + self.m[2] * 0.05), xytext=(pos2[0], pos2[1]),
-                     color="blue", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="b"))
-        plt.annotate(text='', xy=(xtruth[1] + mtruth[1] * 0.05, xtruth[2] + mtruth[2] * 0.05),
-                     xytext=(xtruth[1], xtruth[2]),
-                     color="red", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="r"))
-        # 添加坐标轴标识
-        plt.xlabel('y/m')
-        plt.ylabel('z/m')
-        plt.gca().set_aspect('equal', adjustable='box')
-        plt.gca().grid(b=True)
-        plt.pause(0.05)
+        print('pos={}m, emz={}, Emax={:.2f}, Emin={:.2f}, NEES={:.1f}, timeCost={:.3f}s'.format(
+            self.pos, self.m, max(abs(Estate)), min(abs(Estate)), nees, timeCost))
 
 
-def sim(state=None):
-    # 使用模拟的实测结果，测试UKF滤波器的参数设置是否合理
+def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=30):
+    """
+    使用模拟的观测值验证算法的准确性
+    :param state: 【list】模拟的真实状态，可以有多个不同的状态
+    :param sensor_std: 【float】sensor的噪声标准差[mG]
+    :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
+    :param plotBool: 【bool】是否绘图
+    :param printBool: 【bool】是否打印输出
+    :param maxIter: 【int】最大迭代次数
+    :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
+    """
     if state is None:
         state = [0, 0.2, 0.4, 0, 0, 1, 1]
-    mp = Tracker(state)
-    nmax = 30  # 迭代次数
+    mp = Tracker(sensor_std, state0 ,state)
     E = np.zeros(mp.measureNum)
-    Esim = np.zeros((mp.measureNum, nmax))
+    Esim = np.zeros((mp.measureNum, maxIter))
     useSaved = False
 
     if useSaved:
         f = open('Esim.json', 'r')
         simData = json.load(f)
         for j in range(mp.measureNum):
-            for k in range(nmax):
+            for k in range(maxIter):
                 Esim[j, k] = simData.get('Esim{}-{}'.format(j, k), 0)
         print('++++read saved Esim data+++')
     else:
-        std = 5
-        em1Sim = q2m(*state[3:])
+        std = sensor_std
+        em1Sim = q2R(state[3: 7])[:, -1]
         dArray = state[:3] - mp.coilArray
         for i, d in enumerate(dArray):
             # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em1Sim)  # x线圈阵列产生的感应电压中间值
@@ -239,10 +215,10 @@ def sim(state=None):
 
         simData = {}
         for j in range(mp.measureNum):
-            Esim[j, :] = np.random.normal(E[j], std, nmax)
+            Esim[j, :] = np.random.normal(E[j], std, maxIter)
             # plt.hist(Esim[j, :], bins=25, histtype='bar', rwidth=2)
             # plt.show()
-            for k in range(nmax):
+            for k in range(maxIter):
                 simData['Esim{}-{}'.format(j, k)] = Esim[j, k]
         # 保存模拟数据到本地
         # f = open('Esim.json', 'w')
@@ -251,24 +227,45 @@ def sim(state=None):
         # print('++++save new Esim data+++')
 
     # 运行模拟数据
-    n = 30
+    for i in range(maxIter):
+        if plotBool:
+            print('=========={}=========='.format(i))
+            plt.ion()
+            plotP(mp, state, i, plotType)
+            if i == maxIter - 1:
+                plt.ioff()
+                plt.show()
+        mp.run(printBool, Esim[:, i])
+
+    err_pos = np.linalg.norm(mp.ukf.x[:3] - state[:3]) / np.linalg.norm(state[:3])
+    err_em = np.linalg.norm(q2R(mp.ukf.x[3: 7])[:, -1] - q2R(state[3: 7])[:, -1])
+    print('\nerr_std: pos={}, err_pos={:.0%}, err_em={:.0%}'.format(np.round(state[:3], 3), err_pos, err_em))
+    return (err_pos, err_em)
+
+def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
+    """
+    模拟误差分布
+    :param contourBar: 【np.array】等高线的刻度条
+    :param sensor_std: 【float】sensor的噪声标准差[mG]
+    :param pos_or_ori: 【int】选择哪个输出 0：位置，1：姿态
+    :return:
+    """
+    n = 20
+    x, y = np.meshgrid(np.linspace(-0.2, 0.2, n), np.linspace(-0.2, 0.2, n))
+    state0Dist = np.array([0, 0, -0.4, 1, 0, 0, 0])
+    stateDist = np.array([0, 0, -0.4, 0.5 * math.sqrt(3), 0.5, 0, 0])
+    z = np.zeros((n, n))
     for i in range(n):
-        print('=========={}=========='.format(i))
+        for j in range(n):
+            stateDist[0] = x[i, j]
+            stateDist[1] = y[i, j]
+            z[i, j] = sim(sensor_std, plotType=(0, 1), state0=state0Dist, plotBool=False, printBool=False, state=stateDist)[pos_or_ori]
 
-        plt.ion()
-        mp.plotP(state, i * 0.1)
-        if i == n - 1:
-            plt.ioff()
-            plt.show()
-
-        mp.run(Esim[:, i])
-        time.sleep(0.05)
-
+    plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
 if __name__ == '__main__':
-    sim(state=[0, 0.2, 0.3, 0, 1, 0, 0])
-    # n = 9
-    # dzs = np.linspace(0.1, 0.4, n)
-    # Esol = solenoidB()
-    # Emom = inducedVolatage()
-    # print('Esol={:.1f}, Emom={:.1f}'.format(Esol, Emom))
+    state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
+    state = np.array([0.1, 0.1, 0.4, 0, 1, 0, 0])
+    sim(sensor_std=25, state0=state0, state=state, plotBool=False, printBool=True, plotType=(0, 1))
+
+    # simErrDistributed(contourBar=9, sensor_std=25, pos_or_ori=0)
