@@ -32,45 +32,6 @@ for row in range(coilrows):
         coilArray[row * coilrows + col] = np.array(
             [-0.5 * CAlength + distance * col, 0.5 * CAwidth - distance * row, 0])
 
-# def inducedVolatage(n1=200, nr1=10, n2=20, nr2=4, r1=5, d1=0.2, r2=2.5, d2=0.02, i=5, freq=20000, d=(0, 0, 0.2),
-#                     em1=(0, 0, 1), em2=(0, 0, 1)):
-#     """
-#     计算发射线圈在接收线圈中产生的感应电动势
-#     **************************
-#     *假设：                   *
-#     *1、线圈均可等效为磁偶极矩  *
-#     *2、线圈之间静止           *
-#     **************************
-#     :param n1: 发射线圈匝数 [1]
-#     :param nr1: 发射线圈层数 [1]
-#     :param n2: 接收线圈匝数 [1]
-#     :param nr2: 接收线圈层数 [1]
-#     :param r1: 发射线圈内半径 [mm]
-#     :param d1: 发射线圈线径 [mm]
-#     :param r2: 接收线圈内半径 [mm]
-#     :param d2: 接收线圈线径 [mm]
-#     :param i: 激励电流的幅值 [A]
-#     :param freq: 激励信号的频率 [Hz]
-#     :param d: 初级线圈中心到次级线圈中心的位置矢量 [m]
-#     :param em1: 发射线圈的朝向 [1]
-#     :param em2: 接收线圈的朝向 [1]
-#     :return E: 感应电压 [1e-6V]
-#     """
-#     dNorm = np.linalg.norm(d)
-#     er = d / dNorm
-#
-#     em1 /= np.linalg.norm(em1)
-#     em2 /= np.linalg.norm(em2)
-#
-#     # 精确计算线圈的面积，第i层线圈的面积为pi * (r + d * i) **2
-#     S1 = n1 // nr1 * math.pi * sum([(r1 + d1 * j) ** 2 for j in range(nr1)]) / 1000000
-#     S2 = n2 // nr2 * math.pi * sum([(r2 + d2 * k) ** 2 for k in range(nr2)]) / 1000000
-#
-#     B = np.divide(pow(10, -7) * i * S1 * (3 * np.dot(er, em1) * er - em1), dNorm ** 3)
-#
-#     E = 2 * math.pi * pow(10, -7) * freq * i * S1 * S2 / dNorm ** 3 * (
-#                 3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2))
-#     return E * 1000000  # 单位1e-6V
 
 def derive(state, param_index):
     """
@@ -175,6 +136,10 @@ def LM(state2, output_data, maxIter, printBool):
     mse = 0
 
     for i in range(maxIter):
+        # 如果预测的z坐标为负，则反向，并对方向矢量取y轴对称（经验总结，暂未确定原因）
+        if state[2] < 0:
+            state[2] = -state[2]
+            state[-2] = -state[-2]
         poss.append(state[:3])
         ems.append(state[3:])
         i += 1
@@ -237,64 +202,20 @@ def stateOut(state, state2, t0, i, mse, printStr, printBool):
     # em = np.round(em, 3)
     print('i={}, pos={}m, em={}, timeCost={:.3f}s, mse={:.8e}'.format(i, pos, em, timeCost, mse))
 
-def generate_data(num_data, state):
+def generate_data(num_data, state, std):
     """
     生成模拟数据
-    :param num_data: 数据维度 [int]
+    :param num_data: 【int】数据维度
+    :param state: 【np.array】真实状态值 (7, )
+    :param std: 【float】传感器的噪声标准差
     :return: 模拟的B值, (27, )
     """
-    Bmid = h(state)  # 模拟数据的中间值
-    std = 5
-    Bsim = np.zeros(num_data)
+    Emid = h(state)  # 模拟数据的中间值
+    Esim = np.zeros(num_data)
 
     for j in range(num_data):
-        Bsim[j] = np.random.normal(Bmid[j], std, 1)
-    return Bsim
-
-def plotLM0(residual_memory, us):
-    fig = plt.figure(figsize=(16, 5))
-    ax1 = fig.add_subplot(121)
-    ax2 = fig.add_subplot(122)
-    # plt.plot(residual_memory)
-    for ax in [ax1, ax2]:
-        ax.set_xlabel("iter")
-    ax1.set_ylabel("residual")
-    ax1.semilogy(residual_memory)
-    ax2.set_xlabel("iter")
-    ax2.set_ylabel("u")
-    ax2.semilogy(us)
-    plt.show()
-
-def plotP0(state0, state, index):
-    pos, em = state0[:3], state0[3:]
-    emNorm = np.linalg.norm(em)
-    em /= emNorm
-    xtruth = state.copy()[:3]
-    xtruth[1] += index  # 获取坐标真实值
-    mtruth = state.copy()[3:]  # 获取姿态真实值
-    pos2 = np.zeros(2)
-    pos2[0], pos2[1] = pos[1] + index, pos[2]  # 预测的坐标值
-
-    # plt.axis('equal')
-    # plt.ylim(0.2, 0.5)
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.plot(pos2[0], pos2[1], 'b+')
-    plt.text(pos2[0], pos2[1], int(index * 10), fontsize=9)
-    plt.plot(xtruth[1], xtruth[2], 'ro')  # 画出真实值
-    plt.text(xtruth[1], xtruth[2], int(index * 10), fontsize=9)
-
-    # 添加磁矩方向箭头
-    scale = 0.05
-    plt.annotate(text='', xy=(pos2[0] + em[1] * scale, pos2[1] + em[2] * scale), xytext=(pos2[0], pos2[1]),
-                 color="blue", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="b"))
-    plt.annotate(text='', xy=(xtruth[1] + mtruth[1] * scale, xtruth[2] + mtruth[2] * scale),
-                 xytext=(xtruth[1], xtruth[2]),
-                 color="red", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="r"))
-    # 添加坐标轴标识
-    plt.xlabel('iter/1')
-    plt.ylabel('pos/m')
-    plt.gca().grid(b=True)
-    plt.pause(0.02)
+        Esim[j] = np.random.normal(Emid[j], std, 1)
+    return Esim
 
 
 def sim(states, state0, sensor_std, plotType, plotBool, printBool, maxIter=100):
@@ -312,7 +233,7 @@ def sim(states, state0, sensor_std, plotType, plotBool, printBool, maxIter=100):
     m, n = coilcols * coilcols, 7
     for i in range(1):
         # run
-        output_data = generate_data(m, states[i])
+        output_data = generate_data(m, states[i], sensor_std)
         LM(state0, output_data, maxIter, printBool)
 
         if plotBool:
@@ -351,7 +272,7 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     n = 20
     x, y = np.meshgrid(np.linspace(-0.2, 0.2, n), np.linspace(-0.2, 0.2, n))
     state0 = np.array([0, 0, 0.3, 1, 0, 0, 0, 0, 0])
-    states = [np.array([0, 0, 0.3, 0.5 * math.sqrt(3), 0.5, 0, 0])]
+    states = [np.array([0, 0, 0.3, 0, 1, 0, 0])]
     z = np.zeros((n, n))
     for i in range(n):
         for j in range(n):
@@ -365,7 +286,7 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
 
 if __name__ == '__main__':
     # state0 = np.array([0, 0, 0.3, 1, 0, 0, 0, 0, 0])  # 初始值
-    # states = [np.array([0.1, 0.1, 0.3, 0.5 * math.sqrt(3), 0.5, 0, 0])]  # 真实值
+    # states = [np.array([0.16, 0.2, 0.3, 1, 0, 0, 0])]  # 真实值
     # err = sim(states, state0, sensor_std=25, plotBool=False, plotType=(1, 2), printBool=True)
 
-    simErrDistributed(contourBar=9, sensor_std=100, pos_or_ori=0)
+    simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)

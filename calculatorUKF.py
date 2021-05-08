@@ -59,22 +59,22 @@ def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05,
 def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2, freq=20000, d=(0, 0, 0.3),
               em1=(0, 0, 1), em2=(0, 0, 1)):
     """
-        计算发射线圈在空间任意一点产生的磁场
-        :param n1: 发射线圈匝数 [1]
-        :param nr1: 发射线圈层数 [1]
-        :param n2: 接收线圈匝数 [1]
-        :param nr2: 接收线圈层数 [1]
-        :param r1: 发射线圈内半径 [mm]
-        :param d1: 发射线圈线径 [mm]
-        :param r2: 接收线圈内半径 [mm]
-        :param d2: 接收线圈线径 [mm]
-        :param ii: 激励电流的幅值 [A]
-        :param freq: 激励信号的频率 [Hz]
-        :param d: 初级线圈中心到次级线圈中心的位置矢量 [m]
-        :param em1: 发射线圈的朝向 [1]
-        :param em2: 接收线圈的朝向 [1]
-        :return E: 感应电压 [1e-6V]
-        """
+    基于毕奥-萨法尔定律，计算发射线圈在接收线圈中产生的感应电动势
+    :param n1: 发射线圈匝数 [1]
+    :param nr1: 发射线圈层数 [1]
+    :param n2: 接收线圈匝数 [1]
+    :param nr2: 接收线圈层数 [1]
+    :param r1: 发射线圈内半径 [mm]
+    :param d1: 发射线圈线径 [mm]
+    :param r2: 接收线圈内半径 [mm]
+    :param d2: 接收线圈线径 [mm]
+    :param ii: 激励电流的幅值 [A]
+    :param freq: 激励信号的频率 [Hz]
+    :param d: 初级线圈中心到次级线圈中心的位置矢量 [m]
+    :param em1: 发射线圈的朝向 [1]
+    :param em2: 接收线圈的朝向 [1]
+    :return E: 感应电压 [1e-6V]
+    """
     nh = int(n1 / nr1)
     ntheta = 100
     theta = np.linspace(0, 2 * math.pi, ntheta, endpoint=False)
@@ -93,7 +93,7 @@ def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2, 
         for j in range(nh):
             dr[ntheta * (i * nh + j): ntheta * (i * nh + j + 1), :] = r[i] * drxy + hh[j]
 
-    er = d * 1000 - dr
+    er = np.array(d) * 1000 - dr
     rNorm = np.linalg.norm(er, axis=1, keepdims=True)
     er0 = er / rNorm
     dB = 1e-4 * ii * np.cross(dl, er0) / rNorm ** 2
@@ -178,7 +178,7 @@ class Tracker:
             self.pos, self.m, max(abs(Estate)), min(abs(Estate)), nees, timeCost))
 
 
-def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=30):
+def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=50):
     """
     使用模拟的观测值验证算法的准确性
     :param state: 【list】模拟的真实状态，可以有多个不同的状态
@@ -211,7 +211,7 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=3
             # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em1Sim)  # x线圈阵列产生的感应电压中间值
             # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em1Sim)  # y线圈阵列产生的感应电压中间值
             # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em1Sim)  # z线圈阵列产生的感应电压中间值
-            E[i] = solenoid(d=d, em2=em1Sim)  # 单向线圈阵列产生的感应电压中间值
+            E[i] = inducedVolatage(d=d, em2=em1Sim)  # 单向线圈阵列产生的感应电压中间值
 
         simData = {}
         for j in range(mp.measureNum):
@@ -228,14 +228,25 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=3
 
     # 运行模拟数据
     for i in range(maxIter):
-        if plotBool:
+        if printBool:
             print('=========={}=========='.format(i))
+        if plotBool:
             plt.ion()
             plotP(mp, state, i, plotType)
             if i == maxIter - 1:
                 plt.ioff()
                 plt.show()
+        posPre = mp.ukf.x[:3]
         mp.run(printBool, Esim[:, i])
+        delta_x = np.linalg.norm(mp.ukf.x[:3] - posPre)
+        # print('delta_x={:.3e}'.format(delta_x))
+
+        if delta_x < 1e-2:
+            if plotBool:
+                plt.ioff()
+                plt.show()
+            else:
+                break
 
     err_pos = np.linalg.norm(mp.ukf.x[:3] - state[:3]) / np.linalg.norm(state[:3])
     err_em = np.linalg.norm(q2R(mp.ukf.x[3: 7])[:, -1] - q2R(state[3: 7])[:, -1])
@@ -252,8 +263,8 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     """
     n = 20
     x, y = np.meshgrid(np.linspace(-0.2, 0.2, n), np.linspace(-0.2, 0.2, n))
-    state0Dist = np.array([0, 0, -0.4, 1, 0, 0, 0])
-    stateDist = np.array([0, 0, -0.4, 0.5 * math.sqrt(3), 0.5, 0, 0])
+    state0Dist = np.array([0, 0, 0.3, 1, 0, 0, 0])
+    stateDist = np.array([0, 0, 0.3, 1, 0, 0, 0])
     z = np.zeros((n, n))
     for i in range(n):
         for j in range(n):
@@ -264,8 +275,8 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
-    state = np.array([0.1, 0.1, 0.4, 0, 1, 0, 0])
-    sim(sensor_std=25, state0=state0, state=state, plotBool=False, printBool=True, plotType=(0, 1))
+    # state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
+    # state = np.array([0.16, 0.2, 0.3, 0.5 * math.sqrt(3), 0.5, 0, 0])
+    # sim(sensor_std=25, state0=state0, state=state, plotBool=True, printBool=True, plotType=(1, 2))
 
-    # simErrDistributed(contourBar=9, sensor_std=25, pos_or_ori=0)
+    simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
