@@ -4,8 +4,8 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from calculatorUKF import inducedVolatage
-from predictorViewer import q2R, plotPos, plotLM, plotErr
+from calculatorUKF import generateEsim, trajectoryLine, inducedVolatage
+from predictorViewer import q2R, plotPos, plotLM, plotErr, plotTrajectory
 
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']
@@ -118,7 +118,7 @@ def LM(state2, output_data, maxIter, printBool):
     :param state2: 预估的状态量 (n, ) + [moment, costTime]
     :param output_data: 观测量 (m, )
     :param maxIter: 最大迭代次数
-    :return: None
+    :return: 【np.array】优化后的状态 (7, )
     """
     output_data = np.array(output_data)
     state = np.array(state2)[:7]
@@ -148,7 +148,7 @@ def LM(state2, output_data, maxIter, printBool):
             step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
             if np.linalg.norm(step) <= eps_step:
                 stateOut(state, state2, t0, i, mse, 'threshold_step', printBool)
-                return
+                return state
             newState = state + step
             newRes = residual(newState, output_data)
             mse = np.linalg.norm(res) ** 2
@@ -167,7 +167,7 @@ def LM(state2, output_data, maxIter, printBool):
                 residual_memory.append(mse)
                 if stop:
                     stateOut(state, state2, t0, i, mse, 'threshold_stop or threshold_residual', printBool)
-                    return
+                    return state
                 else:
                     break
             else:
@@ -178,6 +178,7 @@ def LM(state2, output_data, maxIter, printBool):
         if i == maxIter:
             print('maxIter_step')
             stateOut(state, state2, t0, i, mse, ' ', printBool)
+            return state
 
 
 def stateOut(state, state2, t0, i, mse, printStr, printBool):
@@ -230,7 +231,7 @@ def sim(states, state0, sensor_std, plotType, plotBool, printBool, maxIter=100):
     :param maxIter: 【int】最大迭代次数
     :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
     '''
-    m, n = coilcols * coilcols, 7
+    m, n = coilrows * coilcols, 7
     for i in range(1):
         # run
         output_data = generate_data(m, states[i], sensor_std)
@@ -261,6 +262,33 @@ def sim(states, state0, sensor_std, plotType, plotBool, printBool, maxIter=100):
         ems.clear()
         return (err_pos, err_em)
 
+def trajectorySim(shape, pointsNum, state0, sensor_std, plotBool, printBool, maxIter=100):
+    line = trajectoryLine(shape, pointsNum)
+    q = [0, 0, 1, 1]
+    stateLine = np.array([line[i] + q for i in range(pointsNum)])
+    state = line[0] + q
+
+    m = coilrows * coilcols
+    resultList = []    # 储存每一轮优化算法的最终结果
+
+    # 先对初始状态进行预估
+    E0sim = generate_data(m, state, sensor_std)
+    result = LM(state0, E0sim, maxIter, printBool)
+    resultList.append(result)
+
+    # 对轨迹线上的其它点进行预估
+    for i in range(1, pointsNum):
+        print('--------point:{}---------'.format(i))
+        state = line[i] + q
+        Esim = generate_data(m, state, sensor_std)
+        state2 = np.concatenate((result, [0, 0]))
+        result = LM(state2, Esim, maxIter, printBool)
+        resultList.append(result)
+
+    if plotBool:
+        stateMP = np.asarray(resultList)
+        plotTrajectory(stateLine, stateMP)
+
 def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     '''
     模拟误差分布
@@ -285,8 +313,9 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
 if __name__ == '__main__':
-    # state0 = np.array([0, 0, 0.3, 1, 0, 0, 0, 0, 0])  # 初始值
-    # states = [np.array([0.16, 0.2, 0.3, 1, 0, 0, 0])]  # 真实值
-    # err = sim(states, state0, sensor_std=25, plotBool=False, plotType=(1, 2), printBool=True)
+    state0 = np.array([0, 0, 0.3, 1, 0, 0, 0, 0, 0])  # 初始值
+    states = [np.array([0.16, 0.2, 0.3, 1, 0, 0, 0])]  # 真实值
+    # err = sim(states, state0, sensor_std=5, plotBool=False, plotType=(1, 2), printBool=True)
 
-    simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
+    # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
+    trajectorySim(shape="circle", pointsNum=50, state0=state0, sensor_std=5, plotBool=True, printBool=True)

@@ -9,7 +9,7 @@ from filterpy.kalman import UnscentedKalmanFilter as UKF
 from filterpy.kalman import MerweScaledSigmaPoints
 from filterpy.stats import plot_covariance
 
-from predictorViewer import q2R, plotP, plotErr
+from predictorViewer import q2R, plotP, plotErr, plotTrajectory
 
 plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -56,7 +56,7 @@ def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05,
     return E * 1000000  # 单位1e-6V
 
 
-def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2, freq=20000, d=(0, 0, 0.3),
+def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2, freq=20000, d=(0, 0, 0.3 - 0.0075),
               em1=(0, 0, 1), em2=(0, 0, 1)):
     """
     基于毕奥-萨法尔定律，计算发射线圈在接收线圈中产生的感应电动势
@@ -110,6 +110,7 @@ class Tracker:
     distance = 0.15  # 初级线圈之间的距离[m]
     coilrows = 4
     coilcols = 4
+    measureNum = coilrows * coilcols * 1
     CAlength = distance * (coilrows - 1)
     CAwidth = distance * (coilcols - 1)
     coilArray = np.zeros((coilrows * coilcols, 3))
@@ -120,7 +121,6 @@ class Tracker:
 
     def __init__(self, sensor_std, state0, state):
         self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
-        self.measureNum = self.coilrows * self.coilcols * 1
         self.dt = 0.01  # 时间间隔[s]
 
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
@@ -274,9 +274,112 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
 
     plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
+def trajectorySim(shape, pointsNum, sensor_std, state0, plotBool, printBool, maxIter=50):
+    '''
+    模拟某条轨迹下的定位效果
+    :param sensor_std: 【float】传感器噪声，此处指感应电压的采样噪声[μV]
+    :param state0: 【np.array】初始状态 (7, )
+    :param plotBool: 【bool】是否绘图
+    :param printBool: 【bool】是否打印日志
+    :param maxIter: 【int】最大迭代次数
+    :return:
+    实现流程
+    1、定义轨迹
+    2、提取轨迹上的点生成模拟数据
+    3、提取预估的状态，并绘制预估轨迹
+    '''
+    line = trajectoryLine(shape, pointsNum)
+    q = [0, 0, 1, 1]
+    stateLine = np.array([line[i] + q for i in range(pointsNum)])
+    state =line[0] + q
+
+    mp = Tracker(sensor_std, state0, state)   # 创建UKF定位的对象
+    stateMP = []
+
+    # 先对初始状态进行预估，给予足够的时间满足迭代误差内
+    E0sim = generateEsim(state, sensor_std, maxNum=maxIter)
+    for i in range(maxIter):
+        posPre = mp.ukf.x[:3]
+        mp.run(printBool, E0sim[:, i])
+
+        delta_x = np.linalg.norm(mp.ukf.x[:3] - posPre)
+        if delta_x < 1e-2:
+            print('=========state0 predict over============')
+            break
+    stateMP.append(mp.ukf.x)
+
+    # 对轨迹线上的其它点进行预估
+    for i in range(1, pointsNum):
+        print('--------point:{}---------'.format(i))
+        state = line[i] + q
+        '''
+        # 以位置迭代的步长来判断是否收敛
+        posPre = state0[:3]
+        delta_x = np.linalg.norm(mp.ukf.x[:3] - posPre)
+        while delta_x > 0.004:
+            Esim = generateEsim(state, sensor_std, maxNum=1)
+            mp.run(printBool, Esim[:, 0])
+            delta_x = np.linalg.norm(mp.ukf.x[:3] - posPre)
+            posPre = mp.ukf.x[:3]
+        '''
+        # 固定迭代次数
+        N = 10
+        Esim = generateEsim(state, sensor_std, maxNum=N)
+        for j in range(N):
+            mp.run(printBool, Esim[:, j])
+        stateMP.append(mp.ukf.x)
+
+    if plotBool:
+        stateMP = np.asarray(stateMP)
+        plotTrajectory(stateLine, stateMP)
+
+def trajectoryLine(shape, pointsNum):
+    '''
+    生成指定形状的轨迹线
+    :param shape: 【string】形状
+    :param pointsNum: 【int】线上的点数
+    :return: 【np.array】线上点的坐标集合 (pointsNum, 3)
+    '''
+    if shape == "straight":
+        line = [[x, 0, 0.3] for x in np.linspace(-0.1, 0.1, pointsNum)]
+    elif shape == "sin":
+        line_x = np.linspace(-0.1, 0.1, pointsNum)
+        line_y = np.sin(line_x * pointsNum * math.pi * 0.5) * 0.1
+        line = [[x, y, 0.3] for (x, y) in zip(line_x, line_y)]
+    elif shape == "circle":
+        line0 = np.linspace(0, 2 * math.pi, pointsNum)
+        line_x = np.sin(line0) * 0.1 + 0.1
+        line_y = np.cos(line0) * 0.1
+        line = [[x, y, 0.3] for (x, y) in zip(line_x, line_y)]
+    else:
+        raise TypeError("shape is not right!!!")
+    return line
+
+def generateEsim(state, sensor_std, maxNum=50):
+    '''
+    根据胶囊的状态给出接收线圈的感应电压模拟值
+    :param state: 【np.array】 胶囊的真实状态 (7, )
+    :param maxNum: 【int】最大数据量
+    :param sensor_std: 【float】传感器噪声，此处指感应电压的采样噪声[μV]
+    :return: 【np.array】感应电压模拟值 (Tracker.measureNum, maxNum)
+    '''
+    E = np.zeros(Tracker.measureNum)
+    Esim = np.zeros((Tracker.measureNum, maxNum))
+    em2Sim = q2R(state[3: 7])[:, -1]
+    dArray = state[:3] - Tracker.coilArray
+    for i, d in enumerate(dArray):
+        E[i] = inducedVolatage(d=d, em2=em2Sim)  # 单向线圈阵列产生的感应电压中间值
+
+    for j in range(Tracker.measureNum):
+        Esim[j, :] = np.random.normal(E[j], sensor_std, maxNum)
+
+    return Esim
+
 if __name__ == '__main__':
-    # state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
+    state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
     # state = np.array([0.16, 0.2, 0.3, 0.5 * math.sqrt(3), 0.5, 0, 0])
     # sim(sensor_std=25, state0=state0, state=state, plotBool=True, printBool=True, plotType=(1, 2))
 
-    simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
+    # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
+
+    trajectorySim(shape="straight", pointsNum=50, sensor_std=3, state0=state0, plotBool=True, printBool=False)
