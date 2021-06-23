@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 import matplotlib.pyplot as plt
+from filterpy.common import Q_discrete_white_noise
 from filterpy.kalman import UnscentedKalmanFilter as UKF
 from filterpy.kalman import MerweScaledSigmaPoints
 from filterpy.stats import plot_covariance
@@ -119,8 +120,42 @@ class Tracker:
             coilArray[row * coilrows + col] = np.array(
                 [-0.5 * CAlength + distance * col, 0.5 * CAwidth - distance * row, 0])
 
+    deltaT = 10e-3  # 相邻发射线圈产生的接收信号的间隔时间[s]
+
+    # def __init__(self, sensor_std, state0, state):
+    #     '''
+    #     预测量：x, y, z, q0, q1, q2, q3
+    #     :param sensor_std:【float】sensor的噪声标准差[μV]
+    #     :param state0: 【np.array】初始值 (7,)
+    #     :param state: 【np.array】预测值 (7,)
+    #     '''
+    #     self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
+    #     self.dt = 0.01  # 时间间隔[s]
+    #
+    #     self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
+    #     self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
+    #     self.ukf.x = state0.copy()  # 初始值
+    #     self.x0 = state  # 计算NEES的真实值
+    #
+    #     self.ukf.R *= sensor_std
+    #     self.ukf.P = np.eye(self.stateNum) * 0.01
+    #     for i in range(3, 7):
+    #         self.ukf.P[i, i] = 0.01
+    #     self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
+    #     for i in range(3, 7):
+    #         self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
+    #
+    #     self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
+    #     self.m = q2R(self.ukf.x[3: 7])[:, -1]
+
     def __init__(self, sensor_std, state0, state):
-        self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
+        '''
+        预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3
+        :param sensor_std:【float】sensor的噪声标准差[μV]
+        :param state0: 【np.array】初始值 (10,)
+        :param state: 【np.array】预测值 (10,)
+        '''
+        self.stateNum = 10
         self.dt = 0.01  # 时间间隔[s]
 
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
@@ -130,28 +165,51 @@ class Tracker:
 
         self.ukf.R *= sensor_std
         self.ukf.P = np.eye(self.stateNum) * 0.01
-        for i in range(3, 7):
+        for i in range(6, 10):
             self.ukf.P[i, i] = 0.01
-        self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
-        for i in range(3, 7):
-            self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
 
-        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-        self.m = q2R(self.ukf.x[3: 7])[:, -1]
+        self.ukf.Q = np.zeros((self.stateNum, self.stateNum))  # 初始化过程误差，全部置为零
+        # 以加速度作为误差来源
+        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=5, block_size=3)
+        for i in range(6, 10):   # 四元数的过程误差
+            self.ukf.Q[i, i] = 0.05
+
+        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[2], 3), round(self.ukf.x[4], 3))
+        self.vel = (round(self.ukf.x[1], 3), round(self.ukf.x[3], 3), round(self.ukf.x[5], 3))
+        self.m = q2R(self.ukf.x[6: 10])[:, -1]
+
+    # def f(self, x, dt):
+    #     A = np.eye(self.stateNum)
+    #     return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
     def f(self, x, dt):
+        # 预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3 对应的转移函数
         A = np.eye(self.stateNum)
+        for i in range(0, 6, 2):
+            A[i, i + 1] = dt
         return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
+    # def h(self, state):
+    #     dArray0 = state[:3] - self.coilArray
+    #     em2 = np.array(q2R(state[3:7]))[:, -1]
+    #     E = np.zeros(self.measureNum)
+    #     for i, d in enumerate(dArray0):
+    #         # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
+    #         # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
+    #         # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+    #         E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+    #     return E
+
     def h(self, state):
-        dArray0 = state[:3] - self.coilArray
-        em2 = np.array(q2R(state[3:7]))[:, -1]
+        # 预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3 对应的观测函数
+        posNow = state[:6:2]   # 当前时刻的预测位置
+        velNow = state[1:6:2]    # 当前时刻的预测速度
+        em2 = np.array(q2R(state[6: 10]))[:, -1]
         E = np.zeros(self.measureNum)
-        for i, d in enumerate(dArray0):
-            # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
-            # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
-            # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
-            E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+        for i in range(self.coilrows * self.coilcols):
+            # 倒退第i个线圈的位移di，发射线圈到接收线圈的位置矢量为di - coilArray[i]
+            di = posNow - velNow * (self.coilrows * self.coilcols - 1 - i) * self.deltaT - self.coilArray[i]
+            E[i] = inducedVolatage(d=di, em1=(0, 0, 1), em2=em2)
         return E
 
     def run(self, printBool, Edata):
@@ -166,16 +224,17 @@ class Tracker:
             self.statePrint()
 
     def statePrint(self,):
-        self.pos = np.round(self.ukf.x[:3], 3)
-        self.m = np.round(q2R(self.ukf.x[3: 7])[:, -1], 3)
+        self.pos = np.round(self.ukf.x[:6:2], 3)
+        self.vel = np.round(self.ukf.x[1:6:2], 3)
+        self.m = np.round(q2R(self.ukf.x[6: 10])[:, -1], 3)
 
         timeCost = (datetime.datetime.now() - self.t0).total_seconds()
         Estate = self.h(self.ukf.x)     # 计算每个状态对应的感应电压
         # 计算NEES值
         x = self.x0 - self.ukf.x
         nees = np.dot(x.T, np.linalg.inv(self.ukf.P)).dot(x)
-        print('pos={}m, emz={}, Emax={:.2f}, Emin={:.2f}, NEES={:.1f}, timeCost={:.3f}s'.format(
-            self.pos, self.m, max(abs(Estate)), min(abs(Estate)), nees, timeCost))
+        print('pos={}m, vel={}m/s ,emz={}, Emax={:.2f}, Emin={:.2f}, NEES={:.1f}, timeCost={:.3f}s'.format(
+            self.pos, self.vel, self.m, max(abs(Estate)), min(abs(Estate)), nees, timeCost))
 
 
 def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=50):
@@ -190,7 +249,8 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=5
     :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
     """
     if state is None:
-        state = [0, 0.2, 0.4, 0, 0, 1, 1]
+        # state = [0, 0.2, 0.4, 0, 0, 1, 1]
+        state = [0, 0.2, 0.4, 0.1, 0, 0, 0, 0, 1, 1]
     mp = Tracker(sensor_std, state0 ,state)
     E = np.zeros(mp.measureNum)
     Esim = np.zeros((mp.measureNum, maxIter))
@@ -205,13 +265,14 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=5
         print('++++read saved Esim data+++')
     else:
         std = sensor_std
-        em1Sim = q2R(state[3: 7])[:, -1]
-        dArray = state[:3] - mp.coilArray
-        for i, d in enumerate(dArray):
-            # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em1Sim)  # x线圈阵列产生的感应电压中间值
-            # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em1Sim)  # y线圈阵列产生的感应电压中间值
-            # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em1Sim)  # z线圈阵列产生的感应电压中间值
-            E[i] = inducedVolatage(d=d, em2=em1Sim)  # 单向线圈阵列产生的感应电压中间值
+        # em1Sim = q2R(state[3: 7])[:, -1]
+        # dArray = state[:3] - mp.coilArray
+        # for i, d in enumerate(dArray):
+        #     # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em1Sim)  # x线圈阵列产生的感应电压中间值
+        #     # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em1Sim)  # y线圈阵列产生的感应电压中间值
+        #     # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em1Sim)  # z线圈阵列产生的感应电压中间值
+        #     E[i] = inducedVolatage(d=d, em2=em1Sim)  # 单向线圈阵列产生的感应电压中间值
+        E = mp.h(state)
 
         simData = {}
         for j in range(mp.measureNum):
@@ -241,7 +302,7 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=5
         delta_x = np.linalg.norm(mp.ukf.x[:3] - posPre)
         # print('delta_x={:.3e}'.format(delta_x))
 
-        if delta_x < 1e-2:
+        if delta_x < 1e-3:
             if plotBool:
                 plt.ioff()
                 plt.show()
@@ -249,7 +310,7 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=5
                 break
 
     err_pos = np.linalg.norm(mp.ukf.x[:3] - state[:3]) / np.linalg.norm(state[:3])
-    err_em = np.linalg.norm(q2R(mp.ukf.x[3: 7])[:, -1] - q2R(state[3: 7])[:, -1])
+    err_em = np.linalg.norm(q2R(mp.ukf.x[6: 10])[:, -1] - q2R(state[6: 10])[:, -1])
     print('\nerr_std: pos={}, err_pos={:.0%}, err_em={:.0%}'.format(np.round(state[:3], 3), err_pos, err_em))
     return (err_pos, err_em)
 
@@ -331,7 +392,7 @@ def trajectorySim(shape, pointsNum, sensor_std, state0, plotBool, printBool, max
 
     if plotBool:
         stateMP = np.asarray(stateMP)
-        plotTrajectory(stateLine, stateMP)
+        plotTrajectory(stateLine, stateMP, sensor_std)
 
 def trajectoryLine(shape, pointsNum):
     '''
@@ -376,10 +437,13 @@ def generateEsim(state, sensor_std, maxNum=50):
     return Esim
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
+    # state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
     # state = np.array([0.16, 0.2, 0.3, 0.5 * math.sqrt(3), 0.5, 0, 0])
-    # sim(sensor_std=25, state0=state0, state=state, plotBool=True, printBool=True, plotType=(1, 2))
+
+    state0 = np.array([0, 0, 0, 0, 0.3, 0, 1, 0, 0, 0])   # x,vx, y, vz, z, vz, q0, q1, q2, q3
+    state = np.array([0.16, 0.5, 0.2, 0, 0.3, 0, 0.5 * math.sqrt(3), 0.5, 0, 0])
+    sim(sensor_std=5, state0=state0, state=state, plotBool=False, printBool=True, plotType=(1, 2))
 
     # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
 
-    trajectorySim(shape="straight", pointsNum=50, sensor_std=3, state0=state0, plotBool=True, printBool=False)
+    #trajectorySim(shape="circle", pointsNum=50, sensor_std=6, state0=state0, plotBool=True, printBool=False)

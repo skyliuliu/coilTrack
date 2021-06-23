@@ -182,15 +182,19 @@ def plotErr(x, y, z, contourBar, titleName):
     plt.clabel(cntr, inline_spacing=1, fmt='%.2f', fontsize=8, colors='black')     # 标识等高线的数值
     plt.show()
 
-def plotTrajectory(stateLine, stateMP):
+def plotTrajectory(stateLine, stateMP, sensor_std):
     '''
     描绘轨迹预估图
     :param stateLine: 【np.array】真实状态的轨迹
     :param stateMP: 【np.array】预估的状态
+    :param sensor_std: 【float】传感器噪声，此处指感应电压的采样噪声[μV]
     :return:
     '''
+    plt.title('sensor_std={}'.format(sensor_std))
     plt.axis('equal')  # 坐标轴按照等比例绘图
     plt.gca().grid(b=True)
+    plt.xlabel('x/m')
+    plt.ylabel('y/m')
     plt.plot(stateLine[:, 0], stateLine[:, 1],'r')
     plt.plot(stateMP[:, 0], stateMP[:, 1], 'b--')
     plt.show()

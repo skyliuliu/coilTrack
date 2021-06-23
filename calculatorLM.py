@@ -4,7 +4,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from calculatorUKF import generateEsim, trajectoryLine, inducedVolatage
+from calculatorUKF import generateEsim, trajectoryLine, inducedVolatage, solenoid
 from predictorViewer import q2R, plotPos, plotLM, plotErr, plotTrajectory
 
 
@@ -287,13 +287,13 @@ def trajectorySim(shape, pointsNum, state0, sensor_std, plotBool, printBool, max
 
     if plotBool:
         stateMP = np.asarray(resultList)
-        plotTrajectory(stateLine, stateMP)
+        plotTrajectory(stateLine, stateMP, sensor_std)
 
 def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     '''
     模拟误差分布
     :param contourBar: 【np.array】等高线的刻度条
-    :param sensor_std: 【float】sensor的噪声标准差[mG]
+    :param sensor_std: 【float】sensor的噪声标准差[μV]
     :param pos_or_ori: 【int】选择哪个输出 0：位置，1：姿态
     :return:
     '''
@@ -314,8 +314,12 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
 
 if __name__ == '__main__':
     state0 = np.array([0, 0, 0.3, 1, 0, 0, 0, 0, 0])  # 初始值
-    states = [np.array([0.16, 0.2, 0.3, 1, 0, 0, 0])]  # 真实值
-    # err = sim(states, state0, sensor_std=5, plotBool=False, plotType=(1, 2), printBool=True)
+    states = [np.array([0.16, -0.1, 0.3, 1, 0, 0, 0])]  # 真实值
+    err = sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2), printBool=True)
 
     # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
-    trajectorySim(shape="circle", pointsNum=50, state0=state0, sensor_std=5, plotBool=True, printBool=True)
+    #trajectorySim(shape="straight", pointsNum=50, state0=state0, sensor_std=6, plotBool=True, printBool=True)
+    # Emind = h(state0)
+
+    # Esim = generate_data(16, state0, 3)
+    # print(Esim)
