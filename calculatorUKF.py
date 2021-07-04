@@ -16,7 +16,7 @@ plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 
-def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, i=2, freq=20000, d=(0, 0, 0.3 - 0.0075),
+def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, i=2.0, freq=20000, d=(0, 0, 0.3 - 0.0075),
                     em1=(0, 0, 1), em2=(0, 0, 1)):
     """
     计算发射线圈在接收线圈中产生的感应电动势
@@ -57,7 +57,7 @@ def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05,
     return E * 1000000  # 单位1e-6V
 
 
-def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2, freq=20000, d=(0, 0, 0.3 - 0.0075),
+def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2.0, freq=20000, d=(0, 0, 0.3 - 0.0075),
               em1=(0, 0, 1), em2=(0, 0, 1)):
     """
     基于毕奥-萨法尔定律，计算发射线圈在接收线圈中产生的感应电动势
@@ -440,10 +440,22 @@ if __name__ == '__main__':
     # state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
     # state = np.array([0.16, 0.2, 0.3, 0.5 * math.sqrt(3), 0.5, 0, 0])
 
-    state0 = np.array([0, 0, 0, 0, 0.3, 0, 1, 0, 0, 0])   # x,vx, y, vz, z, vz, q0, q1, q2, q3
-    state = np.array([0.16, 0.5, 0.2, 0, 0.3, 0, 0.5 * math.sqrt(3), 0.5, 0, 0])
-    sim(sensor_std=5, state0=state0, state=state, plotBool=False, printBool=True, plotType=(1, 2))
+    # state0 = np.array([0, 0, 0, 0, 0.3, 0, 1, 0, 0, 0])   # x,vx, y, vz, z, vz, q0, q1, q2, q3
+    # state = np.array([0.16, 0.5, 0.2, 0, 0.3, 0, 1, 0, 0, 0])
+    # sim(sensor_std=5, state0=state0, state=state, plotBool=False, printBool=True, plotType=(1, 2))
 
     # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
 
     #trajectorySim(shape="circle", pointsNum=50, sensor_std=6, state0=state0, plotBool=True, printBool=False)
+    num = 13
+    theta = np.linspace(-60, 60, num) * math.pi / 180
+    theta0 = np.array([-5, -3, 3, 5, 8]) * math.pi / 180
+    for i in range(num):
+        em2 = (0, math.sin(theta[i]), math.cos(theta[i]))
+        # E = inducedVolatage(n1=210, nr1=9, i=0.948, freq=19000, d=(-0.01, -0.006, 0.305 - 0.0075), em2=em2)
+        E = solenoid(n1=210, nr1=9, ii=0.948, freq=19000, d=(-0.01, -0.006, 0.260 - 0.0075), em2=em2)
+        print(E)
+    # for thetai in theta0:
+    #     em2 = (0, math.sin(thetai), math.cos(thetai))
+    #     E = solenoid(n1=210, nr1=9, ii=0.948, freq=19000, d=(-0.01, -0.006, 0.310 - 0.0075), em2=em2)
+    #     print(E)
