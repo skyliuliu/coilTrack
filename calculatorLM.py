@@ -3,10 +3,10 @@ import math
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import least_squares
 
 from calculatorUKF import generateEsim, trajectoryLine, inducedVolatage, solenoid
 from predictorViewer import q2R, plotPos, plotLM, plotErr, plotTrajectory
-
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -52,6 +52,7 @@ def derive(state, param_index):
     data_est_output2 = h(state2)
     return 0.5 * (data_est_output1 - data_est_output2) / delta
 
+
 def h(state):
     """
     观测方程
@@ -70,6 +71,7 @@ def h(state):
         # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
         E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
     return E
+
 
 def jacobian(state, m):
     """
@@ -203,13 +205,14 @@ def stateOut(state, state2, t0, i, mse, printStr, printBool):
     # em = np.round(em, 3)
     print('i={}, pos={}m, em={}, timeCost={:.3f}s, mse={:.8e}'.format(i, pos, em, timeCost, mse))
 
+
 def generate_data(num_data, state, std):
     """
     生成模拟数据
     :param num_data: 【int】数据维度
     :param state: 【np.array】真实状态值 (7, )
     :param std: 【float】传感器的噪声标准差
-    :return: 模拟的B值, (27, )
+    :return: 模拟值, (num_data, )
     """
     Emid = h(state)  # 模拟数据的中间值
     Esim = np.zeros(num_data)
@@ -262,6 +265,45 @@ def sim(states, state0, sensor_std, plotType, plotBool, printBool, maxIter=100):
         ems.clear()
         return (err_pos, err_em)
 
+def funScipy(state, coilIndex, Emea):
+    d = state[:3] - coilArray[coilIndex, :]
+    em2 = q2R(state[3: 7])[:, -1]
+    #print('pos={}, em={}'.format(state[:3], em2))
+
+    Eest = np.zeros(coilrows * coilcols)
+    for i in range(coilrows * coilcols):
+        Eest[i] = inducedVolatage(d=d[i], em2=em2)
+
+    return Eest - Emea
+
+
+def simScipy(states, state0, sensor_std):
+    '''
+    使用模拟的观测值验证scipy自带的优化算法
+    :param states: 模拟的真实状态
+    :param state0: 模拟的初始值
+    :param sensor_std: sensor的噪声标准差[mG]
+    :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
+    :param plotBool: 【bool】是否绘图
+    :param printBool: 【bool】是否打印输出
+    :param maxIter: 【int】最大迭代次数
+    :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
+    '''
+    m, n = coilrows * coilcols, 7
+    output_data = generate_data(m, states[0], sensor_std)
+    result = least_squares(funScipy, state0, verbose=0, args=(np.arange(m), output_data), xtol=1e-6, jac='3-point',)
+    #print(result)
+    stateResult = result.x
+
+    pos = np.round(stateResult[:3], 3)
+    em = np.round(q2R(stateResult[3: 7])[:, -1], 3)
+    posTruth, emTruth = states[0][:3], q2R(states[0][3: 7])[:, -1]
+    err_pos = np.linalg.norm(pos - posTruth) / np.linalg.norm(posTruth)
+    err_em = np.linalg.norm(em - emTruth)  # 方向矢量本身是归一化的
+    print('pos={}, em={} : err_pos={:.0%}, err_em={:.0%}'.format(pos, em, err_pos, err_em))
+
+
+
 def trajectorySim(shape, pointsNum, state0, sensor_std, plotBool, printBool, maxIter=100):
     line = trajectoryLine(shape, pointsNum)
     q = [0, 0, 1, 1]
@@ -269,7 +311,7 @@ def trajectorySim(shape, pointsNum, state0, sensor_std, plotBool, printBool, max
     state = line[0] + q
 
     m = coilrows * coilcols
-    resultList = []    # 储存每一轮优化算法的最终结果
+    resultList = []  # 储存每一轮优化算法的最终结果
 
     # 先对初始状态进行预估
     E0sim = generate_data(m, state, sensor_std)
@@ -288,6 +330,7 @@ def trajectorySim(shape, pointsNum, state0, sensor_std, plotBool, printBool, max
     if plotBool:
         stateMP = np.asarray(resultList)
         plotTrajectory(stateLine, stateMP, sensor_std)
+
 
 def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     '''
@@ -312,13 +355,17 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
 
     plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
+
 if __name__ == '__main__':
     state0 = np.array([0, 0, 0.3, 1, 0, 0, 0, 0, 0])  # 初始值
-    states = [np.array([0.16, -0.1, 0.3, 1, 0, 0, 0])]  # 真实值
+    states = [np.array([0.2, -0.2, 0.2, 0, 1, 0, 0])]  # 真实值
     err = sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2), printBool=True)
+    print('---------------------------------------------------\n')
+    state0S = np.array([0, 0, 0.3, 0, 0, 0, 1])   # 初始值
+    simScipy(states, state0S, sensor_std=10)
 
     # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
-    #trajectorySim(shape="straight", pointsNum=50, state0=state0, sensor_std=6, plotBool=True, printBool=True)
+    # trajectorySim(shape="straight", pointsNum=50, state0=state0, sensor_std=6, plotBool=True, printBool=True)
     # Emind = h(state0)
 
     # Esim = generate_data(16, state0, 3)
