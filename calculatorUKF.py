@@ -16,7 +16,7 @@ plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 
-def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, i=2.0, freq=20000, d=(0, 0, 0.3 - 0.0075),
+def inducedVolatage(n1=210, nr1=9, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, i=0.96, freq=20000, d=(0, 0, 0.3 - 0.0075),
                     em1=(0, 0, 1), em2=(0, 0, 1)):
     """
     计算发射线圈在接收线圈中产生的感应电动势
@@ -54,10 +54,10 @@ def inducedVolatage(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05,
 
     E = 2 * math.pi * pow(10, -7) * freq * i * S1 * S2 / dNorm ** 3 * (
             3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2))
-    return E * 1000000  # 单位1e-6V
+    return abs(E) * 1000000  # 单位1e-6V
 
 
-def solenoid(n1=200, nr1=8, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=2.0, freq=20000, d=(0, 0, 0.3 - 0.0075),
+def solenoid(n1=210, nr1=9, n2=100, nr2=2, r1=5, d1=0.6, r2=2.5, d2=0.05, ii=0.86, freq=20000, d=(0, 0, 0.3 - 0.0075),
               em1=(0, 0, 1), em2=(0, 0, 1)):
     """
     基于毕奥-萨法尔定律，计算发射线圈在接收线圈中产生的感应电动势
@@ -122,95 +122,96 @@ class Tracker:
 
     deltaT = 10e-3  # 相邻发射线圈产生的接收信号的间隔时间[s]
 
-    # def __init__(self, sensor_std, state0, state):
-    #     '''
-    #     预测量：x, y, z, q0, q1, q2, q3
-    #     :param sensor_std:【float】sensor的噪声标准差[μV]
-    #     :param state0: 【np.array】初始值 (7,)
-    #     :param state: 【np.array】预测值 (7,)
-    #     '''
-    #     self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
-    #     self.dt = 0.01  # 时间间隔[s]
-    #
-    #     self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
-    #     self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-    #     self.ukf.x = state0.copy()  # 初始值
-    #     self.x0 = state  # 计算NEES的真实值
-    #
-    #     self.ukf.R *= sensor_std
-    #     self.ukf.P = np.eye(self.stateNum) * 0.01
-    #     for i in range(3, 7):
-    #         self.ukf.P[i, i] = 0.01
-    #     self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
-    #     for i in range(3, 7):
-    #         self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
-    #
-    #     self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-    #     self.m = q2R(self.ukf.x[3: 7])[:, -1]
-
     def __init__(self, sensor_std, state0, state):
         '''
-        预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3
+        预测量：x, y, z, q0, q1, q2, q3
         :param sensor_std:【float】sensor的噪声标准差[μV]
-        :param state0: 【np.array】初始值 (10,)
-        :param state: 【np.array】预测值 (10,)
+        :param state0: 【np.array】初始值 (7,)
+        :param state: 【np.array】预测值 (7,)
         '''
-        self.stateNum = 10
+        self.stateNum = 7  # 预测量：x, y, z, q0, q1, q2, q3
         self.dt = 0.01  # 时间间隔[s]
-
+    
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
         self.ukf.x = state0.copy()  # 初始值
         self.x0 = state  # 计算NEES的真实值
-
+    
         self.ukf.R *= sensor_std
         self.ukf.P = np.eye(self.stateNum) * 0.01
-        for i in range(6, 10):
+        for i in range(3, 7):
             self.ukf.P[i, i] = 0.01
+        self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
+        for i in range(3, 7):
+            self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
+    
+        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
+        self.m = q2R(self.ukf.x[3: 7])[:, -1]
 
-        self.ukf.Q = np.zeros((self.stateNum, self.stateNum))  # 初始化过程误差，全部置为零
-        # 以加速度作为误差来源
-        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=5, block_size=3)
-        for i in range(6, 10):   # 四元数的过程误差
-            self.ukf.Q[i, i] = 0.05
+    # def __init__(self, sensor_std, state0, state):
+    #     '''
+    #     预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3
+    #     :param sensor_std:【float】sensor的噪声标准差[μV]
+    #     :param state0: 【np.array】初始值 (10,)
+    #     :param state: 【np.array】预测值 (10,)
+    #     '''
+    #     self.stateNum = 10
+    #     self.dt = 0.01  # 时间间隔[s]
 
-        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[2], 3), round(self.ukf.x[4], 3))
-        self.vel = (round(self.ukf.x[1], 3), round(self.ukf.x[3], 3), round(self.ukf.x[5], 3))
-        self.m = q2R(self.ukf.x[6: 10])[:, -1]
+    #     self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
+    #     self.ukf = UKF(dim_x=self.stateNum, dim_z=self.measureNum, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
+    #     self.ukf.x = state0.copy()  # 初始值
+    #     self.x0 = state  # 计算NEES的真实值
 
-    # def f(self, x, dt):
-    #     A = np.eye(self.stateNum)
-    #     return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
+    #     self.ukf.R *= sensor_std
+    #     self.ukf.P = np.eye(self.stateNum) * 0.01
+    #     for i in range(6, 10):
+    #         self.ukf.P[i, i] = 0.01
+
+    #     self.ukf.Q = np.zeros((self.stateNum, self.stateNum))  # 初始化过程误差，全部置为零
+    #     # 以加速度作为误差来源
+    #     self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=5, block_size=3)
+    #     for i in range(6, 10):   # 四元数的过程误差
+    #         self.ukf.Q[i, i] = 0.05
+
+    #     self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[2], 3), round(self.ukf.x[4], 3))
+    #     self.vel = (round(self.ukf.x[1], 3), round(self.ukf.x[3], 3), round(self.ukf.x[5], 3))
+    #     self.m = q2R(self.ukf.x[6: 10])[:, -1]
 
     def f(self, x, dt):
-        # 预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3 对应的转移函数
         A = np.eye(self.stateNum)
-        for i in range(0, 6, 2):
-            A[i, i + 1] = dt
         return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
-    # def h(self, state):
-    #     dArray0 = state[:3] - self.coilArray
-    #     em2 = np.array(q2R(state[3:7]))[:, -1]
-    #     E = np.zeros(self.measureNum)
-    #     for i, d in enumerate(dArray0):
-    #         # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
-    #         # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
-    #         # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
-    #         E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
-    #     return E
+
+    # def f(self, x, dt):
+    #     # 预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3 对应的转移函数
+    #     A = np.eye(self.stateNum)
+    #     for i in range(0, 6, 2):
+    #         A[i, i + 1] = dt
+    #     return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
     def h(self, state):
-        # 预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3 对应的观测函数
-        posNow = state[:6:2]   # 当前时刻的预测位置
-        velNow = state[1:6:2]    # 当前时刻的预测速度
-        em2 = np.array(q2R(state[6: 10]))[:, -1]
+        dArray0 = state[:3] - self.coilArray
+        em2 = np.array(q2R(state[3:7]))[:, -1]
         E = np.zeros(self.measureNum)
-        for i in range(self.coilrows * self.coilcols):
-            # 倒退第i个线圈的位移di，发射线圈到接收线圈的位置矢量为di - coilArray[i]
-            di = posNow - velNow * (self.coilrows * self.coilcols - 1 - i) * self.deltaT - self.coilArray[i]
-            E[i] = inducedVolatage(d=di, em1=(0, 0, 1), em2=em2)
+        for i, d in enumerate(dArray0):
+            # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
+            # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
+            # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
+            E[i] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
         return E
+
+    # def h(self, state):
+    #     # 预测量：x,vx, y, vz, z, vz, q0, q1, q2, q3 对应的观测函数
+    #     posNow = state[:6:2]   # 当前时刻的预测位置
+    #     velNow = state[1:6:2]    # 当前时刻的预测速度
+    #     em2 = np.array(q2R(state[6: 10]))[:, -1]
+    #     E = np.zeros(self.measureNum)
+    #     for i in range(self.coilrows * self.coilcols):
+    #         # 倒退第i个线圈的位移di，发射线圈到接收线圈的位置矢量为di - coilArray[i]
+    #         di = posNow - velNow * (self.coilrows * self.coilcols - 1 - i) * self.deltaT - self.coilArray[i]
+    #         E[i] = inducedVolatage(d=di, em1=(0, 0, 1), em2=em2)
+    #     return E
 
     def run(self, printBool, Edata):
         z = np.hstack(Edata[:])
@@ -224,17 +225,16 @@ class Tracker:
             self.statePrint()
 
     def statePrint(self,):
-        self.pos = np.round(self.ukf.x[:6:2], 3)
-        self.vel = np.round(self.ukf.x[1:6:2], 3)
-        self.m = np.round(q2R(self.ukf.x[6: 10])[:, -1], 3)
+        self.pos = np.round(self.ukf.x[:3], 3)
+        self.m = np.round(q2R(self.ukf.x[3: 7])[:, -1], 3)
 
         timeCost = (datetime.datetime.now() - self.t0).total_seconds()
         Estate = self.h(self.ukf.x)     # 计算每个状态对应的感应电压
         # 计算NEES值
         x = self.x0 - self.ukf.x
         nees = np.dot(x.T, np.linalg.inv(self.ukf.P)).dot(x)
-        print('pos={}m, vel={}m/s ,emz={}, Emax={:.2f}, Emin={:.2f}, NEES={:.1f}, timeCost={:.3f}s'.format(
-            self.pos, self.vel, self.m, max(abs(Estate)), min(abs(Estate)), nees, timeCost))
+        print('pos={}m, emz={}, Emax={:.2f}, Emin={:.2f}, NEES={:.1f}, timeCost={:.3f}s'.format(
+            self.pos, self.m, max(abs(Estate)), min(abs(Estate)), nees, timeCost))
 
 
 def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=50):
@@ -313,6 +313,48 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=5
     err_em = np.linalg.norm(q2R(mp.ukf.x[6: 10])[:, -1] - q2R(state[6: 10])[:, -1])
     print('\nerr_std: pos={}, err_pos={:.0%}, err_em={:.0%}'.format(np.round(state[:3], 3), err_pos, err_em))
     return (err_pos, err_em)
+
+def measureDataPredictor(sensor_std, state0, plotType, plotBool, printBool, state=None, maxIter=50):
+    """
+    使用实测结果估计位姿
+    :param sensor_std: 【float】sensor的噪声标准差[1e-6V]
+    :param state: 【list】模拟的真实状态，可以有多个不同的状态
+    :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
+    :param plotBool: 【bool】是否绘图
+    :param printBool: 【bool】是否打印输出
+    :param maxIter: 【int】最大迭代次数
+    :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
+    """
+    measureData = np.zeros(Tracker.measureNum)
+    with open('measureData.csv' , 'r', encoding='utf-8') as f:
+        readData = f.readlines()
+    for i in range(Tracker.measureNum):
+        measureData[i] = eval(readData[i])
+
+    if state is None:
+        state = [0, 0, 0.3, 1, 0, 0, 0]
+    mp = Tracker(sensor_std, state0 ,state)
+
+    for i in range(maxIter):
+        if printBool:
+            print('=========={}=========='.format(i))
+        if plotBool:
+            plt.ion()
+            plotP(mp, state, i, plotType)
+            if i == maxIter - 1:
+                plt.ioff()
+                plt.show()
+        posPre = mp.ukf.x[:3]
+        mp.run(printBool, measureData)
+        delta_x = np.linalg.norm(mp.ukf.x[:3] - posPre)
+        # print('delta_x={:.3e}'.format(delta_x))
+
+        if delta_x < 1e-4:
+            if plotBool:
+                plt.ioff()
+                plt.show()
+            else:
+                break
 
 def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
     """
@@ -437,8 +479,8 @@ def generateEsim(state, sensor_std, maxNum=50):
     return Esim
 
 if __name__ == '__main__':
-    # state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
-    state = np.array([-0.02, 0.033, 0.31 - 0.0075, 0.5 * math.sqrt(3), 0.5, 0, 0])
+    state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
+    state = np.array([-0.025, -0.025, 0.246, 0.5 * math.sqrt(3), 0.5, 0, 0])
 
     # state0 = np.array([0, 0, 0, 0, 0.3, 0, 1, 0, 0, 0])   # x,vx, y, vz, z, vz, q0, q1, q2, q3
     # state = np.array([0.16, 0.5, 0.2, 0, 0.3, 0, 1, 0, 0, 0])
@@ -448,9 +490,5 @@ if __name__ == '__main__':
 
     #trajectorySim(shape="circle", pointsNum=50, sensor_std=6, state0=state0, plotBool=True, printBool=False)
 
-    dArray = state[:3] - Tracker.coilArray
-    for di in dArray:
-        E = inducedVolatage(n1=210, nr1=9, i=1.23, freq=20000, d=di)
-        #E = solenoid(n1=210, nr1=9, ii=1.23, freq=20000, d=di)
-        print(E)
+    measureDataPredictor(sensor_std=3, state0=state0, plotType=(1, 2), plotBool=False, printBool=True, state=state)
 

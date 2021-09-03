@@ -13,74 +13,97 @@ import numpy as np
 from scipy import signal, stats
 
 
-def findPeak(data):
+def findPeakValley(data, E0):
+    '''
+    寻峰算法:
+    1、对连续三个点a, b, c，若a<b && b>c，且b>E0，则b为峰点；若a>b && b<c，且b<E0，则b为谷点
+    2、保存邻近的峰点和谷点，取x=±3个点内的最大或最小值作为该区段的峰点或谷点
+    :param data: 【pd】读取的原始数据
+    :param E0: 【float】原始数据平均值
+    :return:
+    '''
     dataSize = len(data)
-    dataPeak = []
-    for i in range(dataSize-2):
-        d1, d2, d3 = eval(data[i][1]), eval(data[i+1][1]), eval(data[i+2][1])
-        if not (d1 < d2 < d3 or d1 > d2 > d3):
-            dataPeak.append(data[i+1])
-    return dataPeak
+    #startIndex = data._stat_axis._start
+    startIndex = data.index.start
+    # 找出满足条件1的峰和谷
+    peaks, valleys = [], []
+    for i in range(1, dataSize-1):
+        d1, d2, d3 = data['E'][startIndex + i-1], data['E'][startIndex + i], data['E'][startIndex + i+1]
+        if d1 < d2 and d2 >= d3 and d2 > E0 + 3*noiseStd:
+            if not peaks or i - peaks[-1][0] > 6:  # 第一次遇到峰值或距离上一个峰值超过6个数
+                peaks.append((i, d2))
+            elif peaks[-1][1] < d2:   # 局部区域有更大的峰值
+                peaks[-1] = (i, d2)
+        elif d1 > d2 and d2 <= d3 and d2 < E0 - 3*noiseStd:
+            if not valleys or i - valleys[-1][0] > 6:  # 第一次遇到谷值或距离上一个谷值超过6个数
+                valleys.append((i, d2))
+            elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
+                valleys[-1] = (i, d2)
 
-if __name__ == '__main__':
-    # 用csv读取
-    # data = []
-    # with open('data.csv', 'r') as f:
-    #     f_csv = csv.reader(f)
-    #     i = 0
-    #     for row in f_csv:
-    #         data.append((row[0], row[1]))
-    #         i += 1
+    # print('+++++++++\n', peaks)
+    # print('---------\n', valleys)
+    return peaks, valleys
 
-    # 用pandas读取
-
-    data = pd.read_csv('data.csv', names=['t', 'E'], header=0)
-    x = np.array(data['t'][5000:6000])
-    y = np.array(data['E'][5000:6000])
-    #
-    # peaks, _ = signal.find_peaks(y, distance=3)   # 较为耗时，不能用于实时采集
-    # print(peaks)
-    # x_peaks = [x[i] for i in peaks]
-    # y_peaks = [y[i] for i in peaks]
-
-    # peaks2 = signal.find_peaks_cwt(y, np.arange(1,10))  # 适用于毛刺较多时的寻峰
-    # x_peaks2 = [x[i] for i in peaks2]
-    # y_peaks2 = [y[i] for i in peaks2]
-
+def compEpp(Edata):
+    peaks, valleys = findPeakValley(Edata, E0)
     # 峰值点
-    x_pos_slice = x[21::25]
-    y_pos_slice = y[21::25]
+    peaks_x = [peak[0] for peak in peaks]
+    peaks_y = [peak[1] for peak in peaks]
     # 谷值点
-    x_neg_slice = x[33::25]
-    y_neg_slice = y[33::25]
+    valleys_x = [valley[0] for valley in valleys]
+    valleys_y = [valley[1] for valley in valleys]
 
-    peaks_num = min(x_pos_slice.size, x_neg_slice.size)
-    print("peaks_num=", peaks_num)
-    Epp = np.zeros(peaks_num)
-    for i in range(peaks_num):
-        Epp[i] = y_pos_slice[i] - y_neg_slice[i]
+    # 计算峰谷值Epp, 并提取稳定段的Epps
+    EppSize = min(len(peaks), len(valleys))
+    Epp = [peaks[i][1] - valleys[i][1] for i in range(EppSize)]
+    print('峰谷对的个数=', EppSize)
+    start, end = 20, 200
+    # for i in range(start, EppSize):
+    #     if Epp[i] / Epp[i - 1] < 1.02:
+    #         start = i
+    #         break
+    # for j in range(start, EppSize):
+    #     if Epp[j] / Epp[j - 1] < 0.96:
+    #         end = j
+    #         break
+    Epps = Epp[start: end]
+    print('start={}, end={}'.format(start, end))
 
-    mean, std = np.mean(Epp), np.std(Epp)
+    mean, std = np.mean(Epps), np.std(Epps)
     Epp_x = np.linspace(mean - 3 * std, mean + 3 * std, 39)
-    Epp_y = np.exp(-(Epp_x - mean) ** 2 / (2 * std ** 2)) / (std * np.sqrt(2 * np.pi))
+    Epp_y = np.exp(-(Epp_x - mean) ** 2 / (2 * std * std)) / (std * np.sqrt(2 * np.pi))
     # k-s校验,样本大于 300
-    #输出结果中第一个为统计量，第二个为P值（注：统计量越接近0就越表明数据和标准正态分布拟合的越好，
-    #如果P值大于显著性水平，通常是0.05，接受原假设，则判断样本的总体服从正态分布）
-    #r = stats.kstest(Epp, 'norm')
+    # 输出结果中第一个为统计量，第二个为P值（注：统计量越接近0就越表明数据和标准正态分布拟合的越好，
+    # 如果P值大于显著性水平，通常是0.05，接受原假设，则判断样本的总体服从正态分布）
+    # r = stats.kstest(Epp, 'norm')
 
     # 正态分布检验 样本量大于20，小于50;
     # 输出结果中第一个为统计量，第二个为P值（注：p值大于显著性水平0.05，认为样本数据符合正态分布）
-    r = stats.normaltest(Epp)
-    print('r={}, mean={}, var={}'.format(r, mean, std * std))
+    r = stats.normaltest(Epps)
+
+    print('r={}, Emean={:.4f}, var={:.4f}'.format(r, mean, std * std))
 
     fig = plt.figure()
     ax1 = plt.subplot(1, 2, 1)
-    plt.plot(x, y)
-    plt.plot(x_pos_slice, y_pos_slice, '+')
-    plt.plot(x_neg_slice, y_neg_slice, '*')
+    plt.plot(np.arange(Edata.index.size), Edata['E'])
+    plt.plot(peaks_x, peaks_y, '+')
+    plt.plot(valleys_x, valleys_y, '*')
+    plt.plot([peaks[start][0], peaks[end][0]], [peaks[start][1], peaks[end][1]], 'ro')
     plt.grid()
-
     ax2 = plt.subplot(1, 2, 2)
-    plt.hist(Epp, bins=20, density=True)
+    plt.hist(Epps, bins=20, density=True)
     plt.plot(Epp_x, Epp_y)
     plt.show()
+
+if __name__ == '__main__':
+    # 用pandas读取
+    noiseStd = 0.00001   # 噪声值
+
+    data = pd.read_csv('data.csv', names=['i', 'E'], header=0)
+    E0 = data.loc[0: 10000]['E'].mean()    # 求E的均值
+    compEpp(data.loc[0: 5000])
+
+    # 对16个线圈进行轮询
+    # for i in range(16):
+    #     compEpp(data.loc[i * 5000: (i + 1) * 5000])
+

@@ -21,7 +21,7 @@ us = []
 poss = []
 ems = []
 
-distance = 0.15  # 初级线圈之间的距离[m]
+distance = 0.1  # 初级线圈之间的距离[m]
 coilrows = 4
 coilcols = 4
 CAlength = distance * (coilrows - 1)
@@ -225,8 +225,8 @@ def generate_data(num_data, state, std):
 def sim(states, state0, sensor_std, plotType, plotBool, printBool, maxIter=100):
     '''
     使用模拟的观测值验证算法的准确性
-    :param states: 模拟的真实状态
-    :param state0: 模拟的初始值
+    :param states: 真实状态
+    :param state0: 初始值
     :param sensor_std: sensor的噪声标准差[mG]
     :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
     :param plotBool: 【bool】是否绘图
@@ -265,6 +265,41 @@ def sim(states, state0, sensor_std, plotType, plotBool, printBool, maxIter=100):
         ems.clear()
         return (err_pos, err_em)
 
+def measureDataPredictor(state0, states, plotType, plotBool, printBool, maxIter=100):
+    '''
+    使用实测结果估计位姿
+    :param states: 真实状态
+    :param state0: 初始值
+    :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
+    :param plotBool: 【bool】是否绘图
+    :param printBool: 【bool】是否打印输出
+    :param maxIter: 【int】最大迭代次数
+    :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
+    '''
+    # measureData = np.array([19, 37, 30,	12,	53,	105, 82, 29, 61, 129, 103, 35, 32, 62, 48, 19])
+    # read measureData.csv
+    measureData = np.zeros(coilrows * coilcols)
+    with open('measureData.csv' , 'r', encoding='utf-8') as f:
+        readData = f.readlines()
+    for i in range(coilrows * coilcols):
+        measureData[i] = eval(readData[i])
+
+    LM(state0, measureData, maxIter, printBool)
+
+    if plotBool:
+        # plot pos and em
+        # 最大化窗口
+        mng = plt.get_current_fig_manager()
+        mng.window.state('zoomed')
+        iters = len(poss)
+        for j in range(iters):
+            state00 = np.concatenate((poss[j], ems[j]))
+            plt.ion()
+            plotPos(state00, states[0], j, plotType)
+            if j == iters - 1:
+                plt.ioff()
+                plt.show()
+
 def funScipy(state, coilIndex, Emea):
     d = state[:3] - coilArray[coilIndex, :]
     em2 = q2R(state[3: 7])[:, -1]
@@ -302,6 +337,32 @@ def simScipy(states, state0, sensor_std):
     err_em = np.linalg.norm(em - emTruth)  # 方向矢量本身是归一化的
     print('pos={}, em={} : err_pos={:.0%}, err_em={:.0%}'.format(pos, em, err_pos, err_em))
 
+def measureDataPredictorScipy(state0, states, maxIter=100):
+    '''
+    使用实测结果估计位姿
+    :param states: 真实状态
+    :param state0: 初始值
+    :param maxIter: 【int】最大迭代次数
+    :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
+    '''
+    # measureData = np.array([19, 37, 30,	12,	53,	105, 82, 29, 61, 129, 103, 35, 32, 62, 48, 19])
+    # read measureData.csv
+    m = coilrows * coilcols
+    measureData = np.zeros(m)
+    with open('measureData.csv' , 'r', encoding='utf-8') as f:
+        readData = f.readlines()
+    for i in range(m):
+        measureData[i] = eval(readData[i])
+
+    result = least_squares(funScipy, state0, verbose=0, args=(np.arange(m), measureData), xtol=1e-6, jac='3-point',)
+
+    stateResult = result.x
+    pos = np.round(stateResult[:3], 3)
+    em = np.round(q2R(stateResult[3: 7])[:, -1], 3)
+    posTruth, emTruth = states[0][:3], q2R(states[0][3: 7])[:, -1]
+    err_pos = np.linalg.norm(pos - posTruth) / np.linalg.norm(posTruth)
+    err_em = np.linalg.norm(em - emTruth)  # 方向矢量本身是归一化的
+    print('pos={}, em={} : err_pos={:.0%}, err_em={:.0%}'.format(pos, em, err_pos, err_em))
 
 
 def trajectorySim(shape, pointsNum, state0, sensor_std, plotBool, printBool, maxIter=100):
@@ -357,12 +418,12 @@ def simErrDistributed(contourBar, sensor_std=10, pos_or_ori=1):
 
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 0.3, 1, 0, 0, 0, 0, 0])  # 初始值
-    states = [np.array([0.2, -0.2, 0.2, 0, 1, 0, 0])]  # 真实值
-    err = sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2), printBool=True)
-    print('---------------------------------------------------\n')
-    state0S = np.array([0, 0, 0.3, 0, 0, 0, 1])   # 初始值
-    simScipy(states, state0S, sensor_std=10)
+    state0 = np.array([0, 0, 0.3, 0, 0, 0, 1, 0, 0])  # 初始值
+    states = [np.array([-0.025, -0.025, 0.25, 1, 0, 0, 0])]  # 真实值
+    # err = sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2), printBool=True)
+    # print('---------------------------------------------------\n')
+    # state0S = np.array([0, 0, 0.3, 0, 0, 0, 1])   # 初始值
+    # simScipy(states, state0S, sensor_std=10)
 
     # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
     # trajectorySim(shape="straight", pointsNum=50, state0=state0, sensor_std=6, plotBool=True, printBool=True)
@@ -370,3 +431,7 @@ if __name__ == '__main__':
 
     # Esim = generate_data(16, state0, 3)
     # print(Esim)
+
+    measureDataPredictor(state0, states, plotBool=False, plotType=(1, 2), printBool=True)
+
+    measureDataPredictorScipy(state0, states, maxIter=100)
