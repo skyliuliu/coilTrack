@@ -45,7 +45,8 @@ def readCurrent(q):
         for chc in dataRe:
             ch = str(chc[:3], encoding='utf-8')
             currentStr = str(chc[-3:], encoding='utf-8')
-            current = int(currentStr[0]) + int(currentStr[1:3]) * 0.01
+            # 取整数部分和小数部分，拼接起来后只取小数点后两位有效数字
+            current = round(int(currentStr[0]) + int(currentStr[1:3]) * 0.01, 2)  
             if chCurrents[ch].get(current) == None:
                 chCurrents[ch][current] = 0
             else:
@@ -63,11 +64,15 @@ def getData(q):
             for key in data.keys():
                 chCurrents = data.get(key)
                 currents = list(chCurrents.keys())
-                currentTmp = currents[0]
-                for i in range(len(currents) - 1):
-                    if chCurrents.get(currentTmp) < chCurrents.get(currents[i+1]):
-                        currentTmp = currents[i+1]
-                data[key] = currentTmp
+                if currents == []:
+                    break
+                currentSum = 0
+                currentNum = 0
+                for current in currents:
+                    if current != 0:
+                        currentSum += current * chCurrents.get(current)
+                        currentNum += chCurrents.get(current)
+                data[key] = round(currentSum / currentNum, 2) if currentNum else 0.0
             print(data)
         time.sleep(0.5)
 
