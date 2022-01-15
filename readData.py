@@ -92,26 +92,30 @@ def readRecData(qADC, qGyro, qAcc):
         t0 = time.time()
         
         data = ser.readline()
-        adcRe = re.findall(b' \d{5}', data)
-        if adcRe:
-            adcV = np.array([int(v) / 1e7 for v in adcRe])  # 原始信号放大1000倍，然后在MCU中放大10000倍
-            # adcAvg = adcV.mean()
-            qADC.put(adcV)
-            #print('time={:.3f}, adc size={}'.format(time.time(), len(adcV)))
-            gyroRe = re.search(b'GYRO: (.*)', data)  
-            if gyroRe:
-                gyroData = re.findall(b'(-?\d*\.\d*)\t', gyroRe.group())
-                qGyro.put([float(w) for w in  gyroData])
-            print('1-----------dt={:.3f}s------------'.format(time.time() - t0))
-        else:
-            qADC.put([2.5e-3] * 200)
-            
-            accRe = re.search(b'ACCDATA: (.*)', data)
-            if accRe:
-                accData = re.findall(b'(-?\d*\.?\d*)\t', accRe.group())
-                qAcc.put([float(a) for a in  accData])
-            print('2-----------dt={:.3f}s------------'.format(time.time() - t0))
+        # print(data)
+        if data.startswith(b'GYRO'):
+            gyroData = str(data[6: -3], encoding='utf-8').split(' ')
+            gyro_w = [float(w) for w in gyroData]
+            t2 = time.time()
+            print('gyroscope: time={:.0f}ms'.format((t2 - t0) * 1000))
+            qGyro.put({t2: gyro_w})
 
+        elif data.startswith(b'ACCDATA'):
+            accData = str(data[9: -3], encoding='utf-8').split(' ')
+            acc_a = [float(a) for a in accData]
+            t3 = time.time()
+            print('accelerator: time={:.0f}ms'.format((t3 - t0) * 1000))
+            qAcc.put({t3: acc_a})
+
+        else:
+            adcRe = re.findall(b' \d{5}', data)
+            if adcRe:
+                adcV = np.array([int(v) / 1e7 for v in adcRe])  # 原始信号放大1000倍，然后在MCU中放大10000倍
+                t1 = time.time()
+                print('ADC: time={:.0f}ms, size={}'.format((t1 - t0) * 1000, len(adcV)))
+                qADC.put({t1: adcV})
+
+        
 
 def getRecData(qADC, qGyro, qAcc):
     app = pg.Qt.QtGui.QApplication([])
@@ -156,25 +160,18 @@ def getRecData(qADC, qGyro, qAcc):
     qAcc_x = Queue()
     qAcc_y = Queue()
     qAcc_z = Queue()
-    iADC = 0
-    iGyro = 0
-    iAcc = 0
+    fs = 20000   # ADC采样率
+    dt = 1 / fs
     def update():
-        nonlocal iADC, iGyro, iAcc
         # ADC  
         if not qADC.empty():
-            adcV = qADC.get()
+            ts = list(qADC.get().keys())[0]
+            adcV = list(qADC.get().values())[0]
             n = len(adcV)
-            for v in adcV:
-                yADC.put(v)
-                iADC += 1
-                xADC.put(iADC)
-        else:
-            n = 500
-            for _ in range(n):
-                yADC.put(0)
-                iADC += 1
-                xADC.put(iADC)
+            for i in range(n):
+                yADC.put(adcV[i])
+                xADC.put(ts + i * dt)
+
         curveADC.setData(xADC.queue, yADC.queue)
         # if iADC > 20000:
         #     for _ in range(n):
@@ -183,12 +180,12 @@ def getRecData(qADC, qGyro, qAcc):
         
         # gyroscope
         if not qGyro.empty():
-            iGyro += 1
-            w = qGyro.get()
+            ts = list(qGyro.get().keys())[0]
+            w = list(qGyro.get().values())[0]
             qGyro_x.put(w[0])
             qGyro_y.put(w[1])
             qGyro_z.put(w[2])
-            xGyro.put(iGyro)
+            xGyro.put(ts)
 
             curveGyro_x.setData(xGyro.queue, qGyro_x.queue)
             curveGyro_y.setData(xGyro.queue, qGyro_y.queue)
@@ -202,12 +199,12 @@ def getRecData(qADC, qGyro, qAcc):
 
         # accelerator
         if not qAcc.empty():
-            iAcc += 1
-            a = qAcc.get()
+            ts = list(qAcc.get().keys())[0]
+            a = list(qAcc.get().values())[0]
             qAcc_x.put(a[0])
             qAcc_y.put(a[1])
             qAcc_z.put(a[2])
-            xAcc.put(iAcc)
+            xAcc.put(ts)
 
             curveAcc_x.setData(xAcc.queue, qAcc_x.queue)
             curveAcc_y.setData(xAcc.queue, qAcc_y.queue)
