@@ -1,3 +1,4 @@
+import csv
 import re
 import sys
 import time
@@ -9,6 +10,8 @@ import matplotlib.pyplot as plt
 import pyqtgraph as pg
 import serial
 import serial.tools.list_ports
+
+from dataTool import findPeakValley
 
 
 def readCurrent(q):
@@ -55,7 +58,7 @@ def readCurrent(q):
                 chCurrents[ch][current] = 0
             else:
                 chCurrents[ch][current] += 1
-        #print(chCurrents)
+        print(chCurrents)
         q.put(chCurrents)
 
 def getData(q):
@@ -95,25 +98,24 @@ def readRecData(qADC, qGyro, qAcc):
         adcRe = re.findall(b' \d{5}', data)
         if adcRe:
             adcV = np.array([int(v) / 1e7 for v in adcRe])  # 原始信号放大1000倍，然后在MCU中放大10000倍
-            # adcAvg = adcV.mean()
-            qADC.put(adcV)
-            #print('time={:.3f}, adc size={}'.format(time.time(), len(adcV)))
+            adcAvg = adcV.mean()
+            qADC.put(adcV - adcAvg)
+            
+        else:
+            qADC.put([0] * 200)
+            
             gyroRe = re.search(b'GYRO: (.*)', data)  
             if gyroRe:
-                gyroData = re.findall(b'(-?\d*\.\d*)\t', gyroRe.group())
+                gyroData = re.findall(b'(-?\d*\.\d*)', gyroRe.group()[:-2])
                 qGyro.put([float(w) for w in  gyroData])
-            print('1-----------dt={:.3f}s------------'.format(time.time() - t0))
-        else:
-            qADC.put([2.5e-3] * 200)
-            
+
             accRe = re.search(b'ACCDATA: (.*)', data)
             if accRe:
-                accData = re.findall(b'(-?\d*\.?\d*)\t', accRe.group())
+                accData = re.findall(b'(-?\d*\.\d*)', accRe.group()[:-2])
                 qAcc.put([float(a) for a in  accData])
-            print('2-----------dt={:.3f}s------------'.format(time.time() - t0))
 
 
-def getRecData(qADC, qGyro, qAcc):
+def getRecData(qADC, qGyro, qAcc, file=None):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="采样板信号")
     win.resize(1000, 750)
@@ -146,6 +148,13 @@ def getRecData(qADC, qGyro, qAcc):
     curveAcc_y = pAcc.plot(pen='g', name='y')
     curveAcc_z = pAcc.plot(pen='b', name='z')
     
+    # 导出数据
+    if file:
+        f = open(file, 'w', newline='')
+        fcsv = csv.writer(f)
+    else:
+        fcsv = None
+    
     xADC = Queue()
     yADC = Queue()
     xGyro = Queue()
@@ -164,22 +173,33 @@ def getRecData(qADC, qGyro, qAcc):
         # ADC  
         if not qADC.empty():
             adcV = qADC.get()
+            vpp = findPeakValley(adcV, 0, 4e-6)
+            if vpp:
+                print('vpp={}uV'.format(vpp * 1e6))
+
             n = len(adcV)
             for v in adcV:
                 yADC.put(v)
                 iADC += 1
                 xADC.put(iADC)
+
+                if fcsv:   # 导出数据
+                    fcsv.writerow((iADC, v))    
+                
         else:
             n = 500
             for _ in range(n):
                 yADC.put(0)
                 iADC += 1
                 xADC.put(iADC)
+
+                if fcsv:   # 导出数据
+                    fcsv.writerow((iADC, 0))
         curveADC.setData(xADC.queue, yADC.queue)
-        # if iADC > 20000:
-        #     for _ in range(n):
-        #         xADC.get()
-        #         yADC.get()    
+        if iADC > 100000:
+            for _ in range(n):
+                xADC.get()
+                yADC.get()    
         
         # gyroscope
         if not qGyro.empty():
@@ -225,12 +245,56 @@ def getRecData(qADC, qGyro, qAcc):
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
 
-            
-if __name__ == "__main__":
+def findPeakValley(data, E0, noiseStd):
+    '''
+    寻峰算法:
+    1、对连续三个点a, b, c，若a<b && b>c，且b>E0，则b为峰点；若a>b && b<c，且b<E0，则b为谷点
+    2、保存邻近的峰点和谷点，取x=±9个点内的最大或最小值作为该区段的峰点或谷点
+    :param data: 【pd】读取的原始数据
+    :param E0: 【float】原始数据的平均值
+    :param noiseStd: 【float】噪声值
+    :param Vpp: 【float】原始数据的平均峰峰值
+    :return:
+    '''
+    dataSize = len(data)
+    #startIndex = data._stat_axis._start
+    # 找出满足条件1的峰和谷
+    peaks, valleys = [], []
+    for i in range(1, dataSize-1):
+        d1, d2, d3 = data[i-1], data[i], data[i+1]   # 用于实时获取的数据
+        point = (i+1, d2)
+        if d1 < d2 and d2 >= d3 and d2 > E0 + 3*noiseStd:
+            if not peaks or i - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
+                peaks.append(point)
+            elif peaks[-1][1] < d2:   # 局部区域有更大的峰值
+                peaks[-1] = point
+        elif d1 > d2 and d2 <= d3 and d2 < E0 - 3*noiseStd:
+            if not valleys or i - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
+                valleys.append(point)
+            elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
+                valleys[-1] = point
+
+    peaks_y = [peak[1] for peak in peaks]
+    valleys_y = [valley[1] for valley in valleys]
+
+    peakMean = sum(peaks_y) / len(peaks_y) if len(peaks_y) else 0
+    valleyMean = sum(valleys_y) / len(valleys_y) if len(valleys_y) else 0
+    return peakMean - valleyMean
+
+def readRec():
     q1, q2, q3 = Queue(), Queue(), Queue()
     # readRecData(q1, q2, q3)
     procReadRec = Process(target=readRecData, args=(q1, q2, q3))
     procReadRec.daemon = True
     procReadRec.start()
 
-    getRecData(q1, q2, q3)
+    getRecData(q1, q2, q3, file=None)
+
+
+def readSend():
+    q = Queue()
+    readCurrent(q)
+
+
+if __name__ == "__main__":
+    readRec()

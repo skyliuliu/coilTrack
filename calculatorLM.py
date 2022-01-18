@@ -38,8 +38,8 @@ def get_init_u(A, tao):
 
 
 class Tracker:
-    currents = [1] * 16
-    coils = CoilArray(currents)
+    currents = [2.15, 2.18, 2.26, 2.33, 2.27, 2.25, 2.24, 2.32, 2.22, 2.34, 2.31, 2.27, 2.3, 2.37, 2.38, 2.28]
+    coils = CoilArray(np.array(currents))
 
     maxIter = 50        # 最大迭代次数
     printBool = True    # 是否打印结果
@@ -84,7 +84,7 @@ class Tracker:
             # E[i * 3] = inducedVolatage(d=d, em1=(1, 0, 0), em2=em2)
             # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em2)
             # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em2)
-            E[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.coils.currents[i])
+            E[i] = self.coils.solenoid(d=d, em2=em2, ii=self.coils.currents[i])
         return E
 
     def jacobian(self):
@@ -395,10 +395,14 @@ class Tracker:
 
 if __name__ == '__main__':
     state0 = np.array([0, 0, 0.3, 0, 0, 0, 1, 0, 0])  # 初始值
-    states = [np.array([-0.025, -0.025, 0.25, 1, 0, 0, 0])]  # 真实值
+    states = [np.array([0, 0, 0.16 - 0.0075, 1, 0, 0, 0])]  # 真实值
 
     tracker = Tracker(state0)
-    err = tracker.sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2))
+
+    Emid = tracker.h(states[0])
+    print(Emid)
+
+    #err = tracker.sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2))
     # print('---------------------------------------------------\n')
     # state0S = np.array([0, 0, 0.3, 0, 0, 0, 1])   # 初始值
     # tracker.simScipy(states, state0S, sensor_std=10)

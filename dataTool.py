@@ -13,36 +13,54 @@ import numpy as np
 from scipy import signal, stats
 
 
-def findPeakValley(data, E0):
+def findPeakValley(data, E0, noiseStd):
     '''
     寻峰算法:
     1、对连续三个点a, b, c，若a<b && b>c，且b>E0，则b为峰点；若a>b && b<c，且b<E0，则b为谷点
-    2、保存邻近的峰点和谷点，取x=±3个点内的最大或最小值作为该区段的峰点或谷点
+    2、保存邻近的峰点和谷点，取x=±9个点内的最大或最小值作为该区段的峰点或谷点
     :param data: 【pd】读取的原始数据
-    :param E0: 【float】原始数据平均值
+    :param E0: 【float】原始数据的平均值
+    :param noiseStd: 【float】噪声值
+    :param Vpp: 【float】原始数据的平均峰峰值
     :return:
     '''
     dataSize = len(data)
     #startIndex = data._stat_axis._start
-    startIndex = data.index.start
     # 找出满足条件1的峰和谷
     peaks, valleys = [], []
     for i in range(1, dataSize-1):
-        d1, d2, d3 = data['E'][startIndex + i-1], data['E'][startIndex + i], data['E'][startIndex + i+1]
+        d1, d2, d3 = data['E'][i-1], data['E'][i], data['E'][i+1]   # 当data为通过pandas导入的数据
+        #d1, d2, d3 = data[i-1], data[i], data[i+1]   # 用于实时获取的数据
+        point = (i+1, d2)
         if d1 < d2 and d2 >= d3 and d2 > E0 + 3*noiseStd:
-            if not peaks or i - peaks[-1][0] > 6:  # 第一次遇到峰值或距离上一个峰值超过6个数
-                peaks.append((i, d2))
+            if not peaks or i - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
+                peaks.append(point)
             elif peaks[-1][1] < d2:   # 局部区域有更大的峰值
-                peaks[-1] = (i, d2)
+                peaks[-1] = point
         elif d1 > d2 and d2 <= d3 and d2 < E0 - 3*noiseStd:
-            if not valleys or i - valleys[-1][0] > 6:  # 第一次遇到谷值或距离上一个谷值超过6个数
-                valleys.append((i, d2))
+            if not valleys or i - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
+                valleys.append(point)
             elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
-                valleys[-1] = (i, d2)
+                valleys[-1] = point
 
+    peaks_x = [peak[0] for peak in peaks]
+    peaks_y = [peak[1] for peak in peaks]
+    valleys_x = [valley[0] for valley in valleys]
+    valleys_y = [valley[1] for valley in valleys]
+
+    peakMean = sum(peaks_y) / len(peaks_y) if len(peaks_y) else 0
+    valleyMean = sum(valleys_y) / len(valleys_y) if len(valleys_y) else 0
     # print('+++++++++\n', peaks)
     # print('---------\n', valleys)
-    return peaks, valleys
+
+    # plot peaks and valleys in data fig
+    plt.plot(data['i'], data['E'])
+    plt.plot(peaks_x, peaks_y, '+')
+    plt.plot(valleys_x, valleys_y, '*')
+    plt.show()
+    
+
+    return peakMean - valleyMean
 
 def compEpp(Edata):
     peaks, valleys = findPeakValley(Edata, E0)
@@ -97,11 +115,10 @@ def compEpp(Edata):
 
 if __name__ == '__main__':
     # 用pandas读取
-    noiseStd = 0.00001   # 噪声值
-
-    data = pd.read_csv('data.csv', names=['i', 'E'], header=0)
+    data = pd.read_csv('adcV.csv', names=['i', 'E'], header=0)
     E0 = data.loc[0: 10000]['E'].mean()    # 求E的均值
-    compEpp(data.loc[0: 5000])
+    findPeakValley(data, 0, noiseStd=0.000004)
+    #compEpp(data.loc[0: 5000])
 
     # 对16个线圈进行轮询
     # for i in range(16):
