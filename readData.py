@@ -114,6 +114,7 @@ def readRecData(qADC, qGyro, qAcc):
                 accData = re.findall(b'(-?\d*\.\d*)', accRe.group()[:-2])
                 qAcc.put([float(a) for a in  accData])
 
+        
 
 def getRecData(qADC, qGyro, qAcc, file=None):
     app = pg.Qt.QtGui.QApplication([])
@@ -166,10 +167,9 @@ def getRecData(qADC, qGyro, qAcc, file=None):
     qAcc_y = Queue()
     qAcc_z = Queue()
     iADC = 0
-    iGyro = 0
-    iAcc = 0
+    xIMU = 0
     def update():
-        nonlocal iADC, iGyro, iAcc
+        nonlocal iADC, xIMU
         # ADC  
         if not qADC.empty():
             adcV = qADC.get()
@@ -202,13 +202,13 @@ def getRecData(qADC, qGyro, qAcc, file=None):
                 yADC.get()    
         
         # gyroscope
+        xIMU += 1
         if not qGyro.empty():
-            iGyro += 1
             w = qGyro.get()
             qGyro_x.put(w[0])
             qGyro_y.put(w[1])
             qGyro_z.put(w[2])
-            xGyro.put(iGyro)
+            xGyro.put(xIMU)
 
             curveGyro_x.setData(xGyro.queue, qGyro_x.queue)
             curveGyro_y.setData(xGyro.queue, qGyro_y.queue)
@@ -222,12 +222,11 @@ def getRecData(qADC, qGyro, qAcc, file=None):
 
         # accelerator
         if not qAcc.empty():
-            iAcc += 1
             a = qAcc.get()
             qAcc_x.put(a[0])
             qAcc_y.put(a[1])
             qAcc_z.put(a[2])
-            xAcc.put(iAcc)
+            xAcc.put(xIMU)
 
             curveAcc_x.setData(xAcc.queue, qAcc_x.queue)
             curveAcc_y.setData(xAcc.queue, qAcc_y.queue)
