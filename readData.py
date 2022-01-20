@@ -12,6 +12,7 @@ import serial
 import serial.tools.list_ports
 
 from dataTool import findPeakValley
+from calculatorLM import Tracker
 
 
 def readCurrent(q):
@@ -115,20 +116,26 @@ def readRecData(qADC, qGyro, qAcc):
                 qAcc.put([float(a) for a in  accData])
 
         
-
-def getRecData(qADC, qGyro, qAcc, file=None):
+def plotRecData(qADC, qGyro, qAcc, file=None):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="采样板信号")
     win.resize(1000, 750)
     win.setWindowTitle("接收端采样")
     pg.setConfigOptions(antialias=True)
 
-    pADC = win.addPlot(title='ADC', colspan=2)
+    pADC = win.addPlot(title='ADC', col=0)
     pADC.addLegend()
     pADC.setLabel('left', '电压', units='V')
     pADC.setLabel('bottom', 'points', units='1')
     pADC.showGrid(x=True, y=True)
     curveADC = pADC.plot()
+
+    pMeaVSsim = win.addPlot(title='实测 vs 理论', col=1)
+    pMeaVSsim.addLegend()
+    pMeaVSsim.setLabel('left', '电压', units='uV')
+    pMeaVSsim.setLabel('bottom', '采样包数', units='1')
+    curveMea = pMeaVSsim.plot(pen='r', name='实测')
+    curveSim = pMeaVSsim.plot(pen='g', name='理论')
     win.nextRow()
     
     pGyro = win.addPlot(title='gyroscope', col=0)
@@ -156,8 +163,21 @@ def getRecData(qADC, qGyro, qAcc, file=None):
     else:
         fcsv = None
     
+    # ADC
     xADC = Queue()
     yADC = Queue()
+    iADC = 0
+    xVS = Queue()
+    yMea = Queue()
+    ySim = Queue()
+    iVS = 0
+
+    # sim data
+    state = np.array([0, 0, 0.21 - 0.0075, 1, 0, 0, 0])  # 真实值
+    tracker = Tracker(state)
+    VppSim = tracker.h(state) * 2
+
+    # IMU
     xGyro = Queue()
     xAcc = Queue()
     qGyro_x = Queue()
@@ -166,15 +186,18 @@ def getRecData(qADC, qGyro, qAcc, file=None):
     qAcc_x = Queue()
     qAcc_y = Queue()
     qAcc_z = Queue()
-    iADC = 0
     xIMU = 0
     def update():
-        nonlocal iADC, xIMU
+        nonlocal iADC, xIMU, iVS
         # ADC  
         if not qADC.empty():
             adcV = qADC.get()
             vpp = findPeakValley(adcV, 0, 4e-6)
             if vpp:
+                iVS += 1
+                xVS.put(iVS)
+                yMea.put(vpp * 1e6)
+                ySim.put(VppSim[iVS%16 - 1])
                 print('vpp={}uV'.format(vpp * 1e6))
 
             n = len(adcV)
@@ -196,10 +219,18 @@ def getRecData(qADC, qGyro, qAcc, file=None):
                 if fcsv:   # 导出数据
                     fcsv.writerow((iADC, 0))
         curveADC.setData(xADC.queue, yADC.queue)
+        
         if iADC > 100000:
             for _ in range(n):
                 xADC.get()
-                yADC.get()    
+                yADC.get() 
+
+        if xVS.qsize() > 16:
+            xVS.get()
+            yMea.get()
+            ySim.get()
+        curveMea.setData(xVS.queue, yMea.queue)
+        curveSim.setData(xVS.queue, ySim.queue)
         
         # gyroscope
         xIMU += 1
@@ -287,8 +318,8 @@ def readRec():
     procReadRec.daemon = True
     procReadRec.start()
 
-    getRecData(q1, q2, q3, file=None)
-
+    
+    plotRecData(q1, q2, q3, file=None)
 
 def readSend():
     q = Queue()

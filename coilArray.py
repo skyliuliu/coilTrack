@@ -19,14 +19,14 @@ class CoilArray:
     CAwidth = distance * (coilcols - 1)    # 阵列的宽度（y方向尺寸）
     coilArray = np.zeros((coilrows * coilcols, 3))   # 描述线圈阵列在XY平面的坐标
 
-    n1 = 210  # 发射线圈匝数
-    nr1 = 8   # 发射线圈层数
+    n1 = 205  # 发射线圈匝数
+    nr1 = 9   # 发射线圈层数
     r1 = 5    # 发射线圈内半径【mm】
     d1 = 0.6  # 发射线圈线径【mm】
 
-    n2 = 100  # 接收线圈匝数
-    nr2 = 2   # 接收线圈层数
-    r2 = 2.5    # 接收线圈内半径【mm】
+    n2 = 100   # 接收线圈匝数
+    nr2 = 2    # 接收线圈层数
+    r2 = 2.5   # 接收线圈内半径【mm】
     d2 = 0.05  # 接收线圈线径【mm】
     freq = 5000   # 工作频率【Hz】
     em1 = np.array([0, 0, 1], dtype=float)   # 发射线圈朝向
