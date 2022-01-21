@@ -364,9 +364,10 @@ def track3D(state):
     gx.setSpacing(x=5, y=5)
     w.addItem(gx)
     # trajectory line
-    pos0 = np.array([[0, 0, 0]])
+    pos0 = np.array([[0, 0, 0]]) * 100
     pos, q = np.array(state[:3]), state[3:7]
     uAxis, angle = q2ua(q)
+    euler = q2Euler(state[3: 7])
     track0 = np.concatenate((pos0, pos.reshape(1, 3)))
     plt = gl.GLLinePlotItem(pos=track0, width=2, color=(1, 0, 0, 0.6))
     w.addItem(plt)
@@ -379,7 +380,8 @@ def track3D(state):
                               glOptions='opaque')
     ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
     w.addItem(ArrowMesh)
-    w.setWindowTitle('position={}cm'.format(np.round(pos * 100, 1)))
+    w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
+    .format(np.round(pos, 1), euler[1], euler[2], euler[0]))
     w.show()
 
     i = 1
@@ -390,6 +392,7 @@ def track3D(state):
         nonlocal i, pts, state
         pos, q = np.array(state[:3]) * 100, state[3:7]
         uAxis, angle = q2ua(q)
+        euler = q2Euler(state[3: 7])
         pt = (pos).reshape(1, 3)
         if pts.size < 150:
             pts = np.concatenate((pts, pt))
@@ -401,7 +404,8 @@ def track3D(state):
         ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
         ArrowMesh.translate(*pos)
         sphereMesh.translate(*pos)
-        w.setWindowTitle('position={}cm'.format(np.round(pos, 1)))
+        w.setWindowTitle('position={}cm || pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0'
+    .format(np.round(pos, 1), euler[1], euler[2], euler[0]))
         i += 1
 
     timer = QtCore.QTimer()
