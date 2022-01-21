@@ -174,7 +174,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     iVS = 0
 
     # sim data
-    state = np.array([0, 0, 0.21 - 0.0075, 1, 0, 0, 0])  # 真实值
+    state = np.array([0, 0, 0.19 - 0.0075, 1, 0, 0, 0])  # 真实值
     coils = CoilArray(currents)
     VppSim = coils.h(state) * 2
 
@@ -194,13 +194,13 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
         # ADC  
         if not qADC.empty():
             adcV = qADC.get()
-            vpp = findPeakValley(adcV, 0, 4e-6)
+            vpp = findPeakValley(adcV, 0, 6e-6)
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
                 yMea.put(vpp * 1e6)
                 ySim.put(VppSim[iVS % 16 - 1])
-                print('vpp={}uV'.format(vpp * 1e6))
+                print('vpp={:.2f}uV'.format(vpp * 1e6))
 
             n = len(adcV)
             for v in adcV:

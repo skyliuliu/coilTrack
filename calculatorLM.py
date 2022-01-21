@@ -1,6 +1,7 @@
 import datetime
-import math
+import time
 from queue import Queue
+import multiprocessing
 from multiprocessing.dummy import Process
 
 import numpy as np
@@ -8,8 +9,8 @@ import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
 
 from coilArray import CoilArray
-from calculatorUKF import generateEsim, trajectoryLine
-from predictorViewer import q2R, plotPos, plotLM, plotErr, plotTrajectory
+from calculatorUKF import trajectoryLine
+from predictorViewer import q2R, plotPos, plotErr, plotTrajectory, track3D, q2Euler
 from readData import readRecData, findPeakValley
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']
@@ -50,7 +51,7 @@ class Tracker:
     def __init__(self, state):
         self.state = state[:7]
         self.n = len(self.state)
-        self.m = self.coils.coilNum
+        self.m = self.coils.coilNum + 3
 
     def derive(self, param_index):
         """
@@ -67,8 +68,8 @@ class Tracker:
             delta = 0.001
         state1[param_index] += delta
         state2[param_index] -= delta
-        data_est_output1 = self.coils.h(state1)
-        data_est_output2 = self.coils.h(state2)
+        data_est_output1 = self.coils.hh(state1)
+        data_est_output2 = self.coils.hh(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
@@ -88,7 +89,7 @@ class Tracker:
         :param output_data: 观测量 (m, )
         :return: residual (m, )
         """
-        data_est_output = self.coils.h(state)
+        data_est_output = self.coils.hh(state)
         residual = output_data - data_est_output
         return residual
 
@@ -175,10 +176,10 @@ class Tracker:
         state2[:] = np.concatenate((self.state, np.array([timeCost, i])))  # 输出的结果
         pos = np.round(self.state[:3], 3)
         em = np.round(q2R(self.state[3: 7])[:, -1], 3)
-        # emNorm = np.linalg.norm(state[3:6])
-        # em /= emNorm
-        # em = np.round(em, 3)
-        print('i={}, pos={}m, em={}, timeCost={:.3f}s, mse={:.8e}'.format(i, pos, em, timeCost, mse))
+        euler = q2Euler(self.state[3: 7])
+
+        print('i={}, pos={}m, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
+        .format(i, pos, euler[1], euler[2], euler[0],  timeCost, np.round(em, 3), mse))
 
     def compErro(self, state, states):
         '''
@@ -202,7 +203,7 @@ class Tracker:
         :param std: 【float】传感器的噪声标准差
         :return: 模拟值, (num_data, )
         """
-        Emid = self.coils.h(state)  # 模拟数据的中间值
+        Emid = self.coils.hh(state)  # 模拟数据的中间值
         Esim = np.zeros(self.m)
 
         for j in range(self.m):
@@ -248,29 +249,42 @@ class Tracker:
             err_pos, err_em = self.compErro(self.state, states)
             return (err_pos, err_em)
 
-    def run(self, state0):
+    def run(self):
         '''
         启动实时定位
-        :param state0:
-        :return:
         '''
         qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-        qVpp = []
+        z = []
+        state0 = multiprocessing.Array('f', [0, 0, 0.2, 1, 0, 0, 0, 0, 0])
 
         # 读取串口数据
         procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
         procReadRec.daemon = True
         procReadRec.start()
 
+        # 描绘3D轨迹
+        pTrack3D = multiprocessing.Process(target=track3D, args=(state0, ))
+        pTrack3D.daemon = True
+        pTrack3D.start()
+
         while True:
+            if not qGyro.empty():
+                qGyro.get()
+            if not qAcc.empty():
+                accData = qAcc.get()
             if not qADC.empty():
                 adcV = qADC.get()
-                vpp = findPeakValley(adcV, 0, 4e-6)
-                if vpp:
-                    qVpp.append(vpp * 1e6)
-            if len(qVpp) == 16:
-                self.LM(state0, qVpp)
-                qVpp.clear()
+                vm = findPeakValley(adcV, 0, 4e-6) * 0.5
+                if vm:
+                    z.append(vm * 1e6)
+            if len(z) == 16:
+                print('vms:\n', np.round(np.array(z), 0))
+                if accData:
+                    for i in range(3):
+                        z.append(accData[i])
+                    self.LM(state0, z)
+                z.clear()
+            time.sleep(0.05)
 
 
     def measureDataPredictor(self, state0, states, plotType, plotBool):
@@ -403,7 +417,7 @@ class Tracker:
 
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 0.2, 0, 0, 0, 1, 0, 0])  # 初始值
+    state0 = np.array([0, 0, 0.2, 1, 0, 0, 0, 0, 0])  # 初始值
     states = [np.array([0, 0, 0.215 - 0.0075, 1, 0, 0, 0])]  # 真实值
 
     tracker = Tracker(state0)
@@ -419,3 +433,5 @@ if __name__ == '__main__':
     # tracker.measureDataPredictor(state0, states, plotBool=False, plotType=(1, 2))
 
     # tracker.measureDataPredictorScipy(state0, states)
+
+    tracker.run()

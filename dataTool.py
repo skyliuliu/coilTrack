@@ -117,7 +117,8 @@ if __name__ == '__main__':
     # 用pandas读取
     data = pd.read_csv('adcV.csv', names=['i', 'E'], header=0)
     E0 = data.loc[0: 10000]['E'].mean()    # 求E的均值
-    findPeakValley(data, 0, noiseStd=0.000004)
+    vpps = findPeakValley(data, 0, noiseStd=6e-6)
+    print('vpps: \n', np.round(np.array(vpps), 0))
     #compEpp(data.loc[0: 5000])
 
     # 对16个线圈进行轮询

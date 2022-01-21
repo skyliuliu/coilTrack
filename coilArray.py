@@ -104,26 +104,38 @@ class CoilArray:
 
     def h(self, state):
         """
-        观测方程
+        纯线圈的观测方程
         :param state: 预估的状态量 (n, )
-        :param m: 观测量的个数 [int]
         :return: E 感应电压 [1e-6V] (m, )
         """
         dArray0 = state[:3] - self.coilArray
         em2 = q2R(state[3: 7])[:, -1]
-        # emNorm = np.linalg.norm(em2)
-        # em2 /= emNorm
+
         E = np.zeros(self.coilNum)
         for i, d in enumerate(dArray0):
             E[i] = self.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
         return E
 
+    def hh(self, state):
+        """
+        线圈+IMU的观测方程
+        :param state: 预估的状态量 (n, )
+        :return: E 感应电压 [1e-6V] (m, )
+        """
+        dArray0 = state[:3] - self.coilArray
+        em2 = q2R(state[3: 7])[:, -1]
+
+        EA = np.zeros(self.coilNum + 3)
+        for i, d in enumerate(dArray0):
+            EA[i] = self.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+        EA[-3:] = em2 * 1000
+        return EA
+
 if __name__ == '__main__':
     currents = [2.15, 2.18, 2.26, 2.33, 2.27, 2.25, 2.24, 2.32, 2.22, 2.34, 2.31, 2.27, 2.3, 2.3, 2.38, 2.28]
-    c = CoilArray(currents)
+    coils = CoilArray(np.array(currents) + 0.54)
     em2 = np.array([0, 0, 1], dtype=float)
     ii = 2
-    d = np.array([0, 0, 0.2 - 0.0075])
-    E1 = c.inducedVolatage(em2, ii, d)
-    E2 = c.solenoid(em2, ii, d)
-    print('E1={:.0f}uV, E2={:.0f}uV'.format(E1, E2))
+    state = np.array([0, 0, 0.215 - 0.0075, 1, 0, 0, 0])
+    vms = coils.h(state)
+    print('vms(uV):\n', np.round(vms, 0))
