@@ -10,6 +10,7 @@ from scipy.optimize import least_squares
 from coilArray import CoilArray
 from calculatorUKF import generateEsim, trajectoryLine
 from predictorViewer import q2R, plotPos, plotLM, plotErr, plotTrajectory
+from readData import readRecData, findPeakValley
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -66,25 +67,9 @@ class Tracker:
             delta = 0.001
         state1[param_index] += delta
         state2[param_index] -= delta
-        data_est_output1 = self.h(state1)
-        data_est_output2 = self.h(state2)
+        data_est_output1 = self.coils.h(state1)
+        data_est_output2 = self.coils.h(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
-
-    def h(self, state):
-        """
-        观测方程
-        :param state: 预估的状态量 (n, )
-        :param m: 观测量的个数 [int]
-        :return: E 感应电压 [1e-6V] (m, )
-        """
-        dArray0 = state[:3] - self.coils.coilArray
-        em2 = q2R(state[3: 7])[:, -1]
-        # emNorm = np.linalg.norm(em2)
-        # em2 /= emNorm
-        E = np.zeros(self.coils.coilNum)
-        for i, d in enumerate(dArray0):
-            E[i] = self.coils.solenoid(d=d, em2=em2, ii=self.coils.currents[i])
-        return E
 
     def jacobian(self):
         """
@@ -103,7 +88,7 @@ class Tracker:
         :param output_data: 观测量 (m, )
         :return: residual (m, )
         """
-        data_est_output = self.h(state)
+        data_est_output = self.coils.h(state)
         residual = output_data - data_est_output
         return residual
 
@@ -217,7 +202,7 @@ class Tracker:
         :param std: 【float】传感器的噪声标准差
         :return: 模拟值, (num_data, )
         """
-        Emid = self.h(state)  # 模拟数据的中间值
+        Emid = self.coils.h(state)  # 模拟数据的中间值
         Esim = np.zeros(self.m)
 
         for j in range(self.m):
@@ -262,6 +247,31 @@ class Tracker:
 
             err_pos, err_em = self.compErro(self.state, states)
             return (err_pos, err_em)
+
+    def run(self, state0):
+        '''
+        启动实时定位
+        :param state0:
+        :return:
+        '''
+        qADC, qGyro, qAcc = Queue(), Queue(), Queue()
+        qVpp = []
+
+        # 读取串口数据
+        procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
+        procReadRec.daemon = True
+        procReadRec.start()
+
+        while True:
+            if not qADC.empty():
+                adcV = qADC.get()
+                vpp = findPeakValley(adcV, 0, 4e-6)
+                if vpp:
+                    qVpp.append(vpp * 1e6)
+            if len(qVpp) == 16:
+                self.LM(state0, qVpp)
+                qVpp.clear()
+
 
     def measureDataPredictor(self, state0, states, plotType, plotBool):
         '''
@@ -397,9 +407,6 @@ if __name__ == '__main__':
     states = [np.array([0, 0, 0.215 - 0.0075, 1, 0, 0, 0])]  # 真实值
 
     tracker = Tracker(state0)
-
-    Emid = tracker.h(states[0]) * 2
-    print(Emid)
 
     #err = tracker.sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2))
     # print('---------------------------------------------------\n')

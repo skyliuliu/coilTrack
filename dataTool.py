@@ -32,12 +32,12 @@ def findPeakValley(data, E0, noiseStd):
         d1, d2, d3 = data['E'][i-1], data['E'][i], data['E'][i+1]   # 当data为通过pandas导入的数据
         #d1, d2, d3 = data[i-1], data[i], data[i+1]   # 用于实时获取的数据
         point = (i+1, d2)
-        if d1 < d2 and d2 >= d3 and d2 > E0 + 3*noiseStd:
+        if d1 < d2 and d2 >= d3 and d2 > E0 + noiseStd:
             if not peaks or i - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
                 peaks.append(point)
             elif peaks[-1][1] < d2:   # 局部区域有更大的峰值
                 peaks[-1] = point
-        elif d1 > d2 and d2 <= d3 and d2 < E0 - 3*noiseStd:
+        elif d1 > d2 and d2 <= d3 and d2 < E0 - noiseStd:
             if not valleys or i - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
                 valleys.append(point)
             elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
@@ -63,7 +63,7 @@ def findPeakValley(data, E0, noiseStd):
     return peakMean - valleyMean
 
 def compEpp(Edata):
-    peaks, valleys = findPeakValley(Edata, E0)
+    peaks, valleys = findPeakValley(Edata, E0, noiseStd=2e-5)
     # 峰值点
     peaks_x = [peak[0] for peak in peaks]
     peaks_y = [peak[1] for peak in peaks]
