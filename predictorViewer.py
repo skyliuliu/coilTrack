@@ -27,9 +27,9 @@ def q2R(q):
     '''
     q0, q1, q2, q3 = q / np.linalg.norm(q)
     R = np.array([
-        [1 - 2 * q2 * q2 - 2 * q3 * q3, 2 * q1 * q2 + 2 * q0 * q3,     2 * q1 * q3 - 2 * q0 * q2],
-        [2 * q1 * q2 - 2 * q0 * q3,     1 - 2 * q1 * q1 - 2 * q3 * q3, 2 * q2 * q3 + 2 * q0 * q1],
-        [2 * q1 * q3 + 2 * q0 * q2,     2 * q2 * q3 - 2 * q0 * q1,     1 - 2 * q1 * q1 - 2 * q2 * q2]
+        [1 - 2 * q2 * q2 - 2 * q3 * q3, 2 * q1 * q2 - 2 * q0 * q3,     2 * q1 * q3 + 2 * q0 * q2],
+        [2 * q1 * q2 + 2 * q0 * q3,     1 - 2 * q1 * q1 - 2 * q3 * q3, 2 * q2 * q3 - 2 * q0 * q1],
+        [2 * q1 * q3 - 2 * q0 * q2,     2 * q2 * q3 + 2 * q0 * q1,     1 - 2 * q1 * q1 - 2 * q2 * q2]
     ])
     return R
 
@@ -51,9 +51,9 @@ def q2Euler(q):
     :return: 【np.array】 [pitch, roll, yaw]
     '''
     q0, q1, q2, q3 = q / np.linalg.norm(q)
-    yaw = math.atan2(2 * q0 * q1 + 2 * q2 * q3, 1 - 2 * q1 * q1 - 2 * q2 * q2)
-    pitch = math.asin(2 * q0 * q2 - 2 * q3 * q1)
-    roll = math.atan2(2 * q0 * q3 + 2 * q1 * q2, 1 - 2 * q2 * q2 - 2 * q3 * q3)
+    pitch = math.atan2(2 * q0 * q1 + 2 * q2 * q3, 1 - 2 * q1 * q1 - 2 * q2 * q2)
+    roll = math.asin(2 * q0 * q2 - 2 * q3 * q1)
+    yaw = math.atan2(2 * q0 * q3 + 2 * q1 * q2, 1 - 2 * q2 * q2 - 2 * q3 * q3)
     return np.array([pitch, roll, yaw]) * 57.3
 
 def plotLM(residual_memory, us):
@@ -381,7 +381,7 @@ def track3D(state):
     ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
     w.addItem(ArrowMesh)
     w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
-    .format(np.round(pos, 1), euler[1], euler[2], euler[0]))
+    .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
     w.show()
 
     i = 1
@@ -405,7 +405,7 @@ def track3D(state):
         ArrowMesh.translate(*pos)
         sphereMesh.translate(*pos)
         w.setWindowTitle('position={}cm || pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0'
-    .format(np.round(pos, 1), euler[1], euler[2], euler[0]))
+    .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
         i += 1
 
     timer = QtCore.QTimer()

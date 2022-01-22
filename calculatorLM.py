@@ -179,7 +179,7 @@ class Tracker:
         euler = q2Euler(self.state[3: 7])
 
         print('i={}, pos={}m, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
-        .format(i, pos, euler[1], euler[2], euler[0],  timeCost, np.round(em, 3), mse))
+        .format(i, pos, euler[0], euler[1], euler[2],  timeCost, np.round(em, 3), mse))
 
     def compErro(self, state, states):
         '''
@@ -272,6 +272,9 @@ class Tracker:
                 qGyro.get()
             if not qAcc.empty():
                 accData = qAcc.get()
+            else:
+                accData = None
+
             if not qADC.empty():
                 adcV = qADC.get()
                 vm = findPeakValley(adcV, 0, 4e-6) * 0.5

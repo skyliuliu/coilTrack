@@ -128,14 +128,17 @@ class CoilArray:
         EA = np.zeros(self.coilNum + 3)
         for i, d in enumerate(dArray0):
             EA[i] = self.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
-        EA[-3:] = em2 * 1000
+
+        EA[-3] = -1000 * em2[-3]  # x反向
+        EA[-2] = -1000 * em2[-2]  # y反向
+        EA[-1] = 1000 * em2[-1]   # z正向
         return EA
 
 if __name__ == '__main__':
     currents = [2.15, 2.18, 2.26, 2.33, 2.27, 2.25, 2.24, 2.32, 2.22, 2.34, 2.31, 2.27, 2.3, 2.3, 2.38, 2.28]
-    coils = CoilArray(np.array(currents) + 0.54)
+    coils = CoilArray(np.array(currents))
     em2 = np.array([0, 0, 1], dtype=float)
     ii = 2
-    state = np.array([0, 0, 0.215 - 0.0075, 1, 0, 0, 0])
-    vms = coils.h(state)
-    print('vms(uV):\n', np.round(vms, 0))
+    state = np.array([0, 0, 0.19 - 0.0075, np.sqrt(2) * 0.5, np.sqrt(2) * 0.5, 0, 0])
+    vpps = coils.h(state) * 2
+    print('vpps(uV):\n', np.round(vpps, 0))
