@@ -12,7 +12,7 @@ from predictorViewer import q2R
 
 
 class CoilArray:
-    distance = 0.1  # 初级线圈之间的距离[m]
+    distance = 100  # 初级线圈之间的距离[m]
     coilrows = 4    # 行数
     coilcols = 4    # 列数
     coilNum = coilrows * coilcols
@@ -38,9 +38,9 @@ class CoilArray:
                 self.coilArray[row * self.coilrows + col] = np.array(
                     [-0.5 * self.CAlength + self.distance * col, 0.5 * self.CAwidth - self.distance * row, 0])
 
-        # 精确计算线圈的面积【m^2】，第i层线圈的面积为pi * (r + d * i) **2
-        self.S1 = self.n1 // self.nr1 * np.pi * sum([(self.r1 + self.d1 * j) ** 2 for j in range(self.nr1)]) / 1000000
-        self.S2 = self.n2 // self.nr2 * np.pi * sum([(self.r2 + self.d2 * k) ** 2 for k in range(self.nr2)]) / 1000000
+        # 精确计算线圈的面积【mm^2】，第i层线圈的面积为pi * (r + d * i) **2
+        self.S1 = self.n1 // self.nr1 * np.pi * sum([(self.r1 + self.d1 * j) ** 2 for j in range(self.nr1)]) 
+        self.S2 = self.n2 // self.nr2 * np.pi * sum([(self.r2 + self.d2 * k) ** 2 for k in range(self.nr2)])
 
         self.currents = currents
 
@@ -65,7 +65,7 @@ class CoilArray:
 
         E = 2 * np.pi * 0.1 * self.freq * ii * self.S1 * self.S2 / dNorm ** 3 * (
                 3 * np.dot(er, self.em1) * np.dot(er, em2) - np.dot(self.em1, em2))
-        return abs(E)  # 单位1e-6V
+        return abs(E) / 1000  # 单位1e-6V
 
     def solenoid(self, em2, ii, d):
         """
@@ -139,6 +139,6 @@ if __name__ == '__main__':
     coils = CoilArray(np.array(currents))
     em2 = np.array([0, 0, 1], dtype=float)
     ii = 2
-    state = np.array([0, 0, 0.19 - 0.0075, np.sqrt(2) * 0.5, np.sqrt(2) * 0.5, 0, 0])
+    state = np.array([0, 0, 190 - 7.5, np.sqrt(2) * 0.5, np.sqrt(2) * 0.5, 0, 0])
     vpps = coils.h(state) * 2
     print('vpps(uV):\n', np.round(vpps, 0))

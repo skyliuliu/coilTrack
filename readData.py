@@ -174,7 +174,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     iVS = 0
 
     # sim data
-    state = np.array([0, 0, 0.19 - 0.0075, np.sqrt(2) * 0.5, -np.sqrt(2) * 0.5, 0, 0])  # 真实值
+    state = np.array([0, 0, 0.29 - 0.0075,1, 0, 0, 0])  # 真实值
     coils = CoilArray(np.array(currents))
     VppSim = coils.h(state) * 2
 

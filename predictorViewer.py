@@ -364,7 +364,7 @@ def track3D(state):
     gx.setSpacing(x=5, y=5)
     w.addItem(gx)
     # trajectory line
-    pos0 = np.array([[0, 0, 0]]) * 100
+    pos0 = np.array([[0, 0, 0]]) * 0.1
     pos, q = np.array(state[:3]), state[3:7]
     uAxis, angle = q2ua(q)
     euler = q2Euler(state[3: 7])
@@ -390,7 +390,7 @@ def track3D(state):
     def update():
         '''update position and orientation'''
         nonlocal i, pts, state
-        pos, q = np.array(state[:3]) * 100, state[3:7]
+        pos, q = np.array(state[:3]) * 0.1, state[3:7]
         uAxis, angle = q2ua(q)
         euler = q2Euler(state[3: 7])
         pt = (pos).reshape(1, 3)

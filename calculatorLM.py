@@ -178,7 +178,7 @@ class Tracker:
         em = np.round(q2R(self.state[3: 7])[:, -1], 3)
         euler = q2Euler(self.state[3: 7])
 
-        print('i={}, pos={}m, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
+        print('i={}, pos={}mm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
         .format(i, pos, euler[0], euler[1], euler[2],  timeCost, np.round(em, 3), mse))
 
     def compErro(self, state, states):
@@ -255,7 +255,7 @@ class Tracker:
         '''
         qADC, qGyro, qAcc = Queue(), Queue(), Queue()
         z = []
-        state0 = multiprocessing.Array('f', [0, 0, 0.2, 1, 0, 0, 0, 0, 0])
+        state0 = multiprocessing.Array('f', [0, 0, 200, 1, 0, 0, 0, 0, 0])
 
         # 读取串口数据
         procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
