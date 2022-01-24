@@ -174,8 +174,8 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     iVS = 0
 
     # sim data
-    state = np.array([0, 0, 0.29 - 0.0075,1, 0, 0, 0])  # 真实值
-    coils = CoilArray(np.array(currents))
+    state = np.array([0, 0, 240 - 0.75, 1, 0, 0, 0])  # 真实值
+    coils = CoilArray(np.array(currents) + 0.54)
     VppSim = coils.h(state) * 2
 
     # IMU
@@ -212,7 +212,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
                     fcsv.writerow((iADC, v))
 
         else:
-            n = 500
+            n = 1000
             for _ in range(n):
                 yADC.put(0)
                 iADC += 1

@@ -281,7 +281,6 @@ class Tracker:
                 if vm:
                     z.append(vm * 1e6)
             if len(z) == 16:
-                print('vms:\n', np.round(np.array(z), 0))
                 if accData:
                     for i in range(3):
                         z.append(accData[i])
