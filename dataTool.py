@@ -4,13 +4,14 @@
 Author: Liu Liu
 Email: Nicke_liu@163.com
 DateTime: 2021/7/4 16:41
-desc: 用于实测数据E的处理
+desc: 用于实测数据的处理
 '''
 import csv
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal, stats
+from scipy.fftpack import fft
 
 
 def findPeakValley(data, E0, noiseStd):
@@ -25,11 +26,11 @@ def findPeakValley(data, E0, noiseStd):
     :return:
     '''
     dataSize = len(data)
-    #startIndex = data._stat_axis._start
+    startIndex = data._stat_axis.start
     # 找出满足条件1的峰和谷
     peaks, valleys = [], []
     for i in range(1, dataSize-1):
-        d1, d2, d3 = data['E'][i-1], data['E'][i], data['E'][i+1]   # 当data为通过pandas导入的数据
+        d1, d2, d3 = data['E'][i-1+startIndex], data['E'][i+startIndex], data['E'][i+1+startIndex]   # 当data为通过pandas导入的数据
         #d1, d2, d3 = data[i-1], data[i], data[i+1]   # 用于实时获取的数据
         point = (i+1, d2)
         if d1 < d2 and d2 >= d3 and d2 > E0 + noiseStd:
@@ -44,6 +45,9 @@ def findPeakValley(data, E0, noiseStd):
                 valleys[-1] = point
 
     peaks_x = [peak[0] for peak in peaks]
+    peak_len = len(peaks_x)
+    gap_x = [peaks_x[i + 1] - peaks_x[i] for i in range(peak_len - 1)]
+    print("gap_x ave = ", sum(gap_x) / len(gap_x))
     peaks_y = [peak[1] for peak in peaks]
     valleys_x = [valley[0] for valley in valleys]
     valleys_y = [valley[1] for valley in valleys]
@@ -113,15 +117,55 @@ def compEpp(Edata):
     plt.plot(Epp_x, Epp_y)
     plt.show()
 
+def compFFT(data):
+    '''
+    对实测的时域数据进行傅里叶变换，提取f0和对应的幅值
+    :param data: 实测结果
+    :return:
+    '''
+    pack = data.E[44200: 45200]   # 选取某个发射线圈的数据包
+
+    p = []   # 保存非零的数据
+    PG = False   # 启动筛选的开关
+    for v in pack:
+        if v:    # 当遇到非零的数据时启动开关
+            PG = True
+        elif PG and v == 0:   # 数据包筛选完成后直接退出
+            break
+        if PG:    # 筛选数据
+            p.append(v)
+
+    p = p[200:]   # 选取稳定阶段的数据
+    L = len(p)   # 数据长度
+    print("L=", L)
+    N = int(np.power(2, np.ceil(np.log2(L))))  # 下一个最近二次幂
+    Fs = 1/7.102e-6    # 采样率
+
+    FFT_y1 = np.abs(fft(p, N)) / L * 2   # N点FFT 变化,但处于信号长度
+    FFT_y1 = FFT_y1[range(int(N / 2))]   # 取一半
+    freq = np.arange(int(N / 2)) * Fs / N   # 频率坐标
+
+    peak = FFT_y1.max()    # 提取最大值
+    f0 = freq[FFT_y1.tolist().index(peak)]    # 提取f0
+
+    plt.plot(freq, FFT_y1)
+    plt.xlabel("f/Hz")
+    plt.ylabel("v/V")
+    plt.scatter(f0, peak, color='red', marker='*')
+    plt.text(f0+200, peak, "f0={:.0f}Hz".format(f0))
+    plt.grid()
+    plt.show()
+
+
 if __name__ == '__main__':
     # 用pandas读取
     data = pd.read_csv('adcV.csv', names=['i', 'E'], header=0)
+
     E0 = data.loc[0: 10000]['E'].mean()    # 求E的均值
-    vpps = findPeakValley(data, 0, noiseStd=6e-6)
-    print('vpps: \n', np.round(np.array(vpps), 0))
+    #vpps = findPeakValley(data, 0, noiseStd=6e-6)
+    # print('vpps: \n', np.round(np.array(vpps), 0))
+
     #compEpp(data.loc[0: 5000])
 
-    # 对16个线圈进行轮询
-    # for i in range(16):
-    #     compEpp(data.loc[i * 5000: (i + 1) * 5000])
+    compFFT(data)
 
