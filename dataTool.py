@@ -147,27 +147,34 @@ def compFFT(data):
     :param data: 实测结果
     :return:
     '''
-    pack = data.E[60500: 62000]   # 选取某个发射线圈的数据包
     dataE = data.E
     peaks = []
 
     p = []   # 保存非零的数据
     PG = False   # 启动筛选的开关
-    for v in pack:
+    for v in dataE:
         if v:    # 当遇到非零的数据时启动开关
             PG = True
         elif PG and v == 0:   # 数据包筛选完成后直接退出
-            break
+            fftPack(p)
+            PG = False
+            p = []
         if PG:    # 筛选数据
             p.append(v)
 
-    p = p[200:]   # 选取稳定阶段的数据
-    L = len(p)   # 数据长度
+def fftPack(p):
+    '''
+    对每个包中的数据实时傅里叶变换
+    :param p: 每个包的数据（非零）
+    :return:
+    '''
+    pack = p[200:]   # 选取稳定阶段的数据
+    L = len(pack)   # 数据长度
     print("L=", L)
     N = int(np.power(2, np.ceil(np.log2(L))))  # 下一个最近二次幂
     Fs = 1/7.102e-6    # 采样率
 
-    FFT_y1 = np.abs(fft(p, N)) / L * 2   # N点FFT 变化,但处于信号长度
+    FFT_y1 = np.abs(fft(pack, N)) / L * 2   # N点FFT 变化,但处于信号长度
     FFT_y1 = FFT_y1[range(int(N / 2))]   # 取一半
     freq = np.arange(int(N / 2)) * Fs / N   # 频率坐标
 
