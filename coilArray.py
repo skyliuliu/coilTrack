@@ -139,6 +139,6 @@ if __name__ == '__main__':
     coils = CoilArray(np.array(currents))
     em2 = np.array([0, 0, 1], dtype=float)
     ii = 2
-    state = np.array([0, 0, 190 - 7.5, np.sqrt(2) * 0.5, np.sqrt(2) * 0.5, 0, 0])
-    vpps = coils.h(state) * 2
-    print('vpps(uV):\n', np.round(vpps, 0))
+    state = np.array([0, -8, 210, 1, 0, 0, 0])
+    vm = coils.h(state)
+    print('vm(uV):\n', np.round(vm, 0))

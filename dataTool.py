@@ -25,46 +25,70 @@ def findPeakValley(data, E0, noiseStd):
     :param Vpp: 【float】原始数据的平均峰峰值
     :return:
     '''
-    dataSize = len(data)
-    startIndex = data._stat_axis.start
-    # 找出满足条件1的峰和谷
+    dataSize = len(data)    # 数据的长度
+    startIndex = data._stat_axis.start   # 数据的起始下标
+    # 找出满足条件的峰和谷
     peaks, valleys = [], []
     for i in range(1, dataSize-1):
         d1, d2, d3 = data['E'][i-1+startIndex], data['E'][i+startIndex], data['E'][i+1+startIndex]   # 当data为通过pandas导入的数据
         #d1, d2, d3 = data[i-1], data[i], data[i+1]   # 用于实时获取的数据
-        point = (i+1, d2)
+        point = (i + startIndex, d2)
         if d1 < d2 and d2 >= d3 and d2 > E0 + noiseStd:
-            if not peaks or i - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
+            if not peaks or i + startIndex - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
                 peaks.append(point)
             elif peaks[-1][1] < d2:   # 局部区域有更大的峰值
                 peaks[-1] = point
         elif d1 > d2 and d2 <= d3 and d2 < E0 - noiseStd:
-            if not valleys or i - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
+            if not valleys or i + startIndex - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
                 valleys.append(point)
             elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
                 valleys[-1] = point
 
+    # 计算每包数据的峰和谷的平均值
+    peakMeans = []  # 存储每包数据的peakMean值
+    start = peaks[0][0]
+    peakSum = peaks[0][1]
+    index = 1
+    for point in peaks[1:]:
+        if point[0] - start < 800:   # 每包数据起始和结尾下标之差不超过800，下同
+            peakSum += point[1]
+            index += 1
+        else:
+            peakMean = peakSum / index
+            peakMeans.append(peakMean)
+            start = point[0]
+            peakSum = point[1]
+            index = 1
+
+    valleyMeans = []  # 存储每包数据的peakMean值
+    start = valleys[0][0]
+    valleySum = valleys[0][1]
+    index = 1
+    for point in valleys[1:]:
+        if point[0] - start < 800:
+            valleySum += point[1]
+            index += 1
+        else:
+            valleyMean = valleySum / index
+            valleyMeans.append(valleyMean)
+            start = point[0]
+            valleySum = point[1]
+            index = 1
+    print("peakMeans=", np.round(peakMeans, 6))
+    print("valleyMeans=", np.round(valleyMeans, 6))
+
+    # plot peaks and valleys in data fig
     peaks_x = [peak[0] for peak in peaks]
-    peak_len = len(peaks_x)
-    gap_x = [peaks_x[i + 1] - peaks_x[i] for i in range(peak_len - 1)]
-    print("gap_x ave = ", sum(gap_x) / len(gap_x))
     peaks_y = [peak[1] for peak in peaks]
     valleys_x = [valley[0] for valley in valleys]
     valleys_y = [valley[1] for valley in valleys]
-
-    peakMean = sum(peaks_y) / len(peaks_y) if len(peaks_y) else 0
-    valleyMean = sum(valleys_y) / len(valleys_y) if len(valleys_y) else 0
-    # print('+++++++++\n', peaks)
-    # print('---------\n', valleys)
-
-    # plot peaks and valleys in data fig
     plt.plot(data['i'], data['E'])
     plt.plot(peaks_x, peaks_y, '+')
     plt.plot(valleys_x, valleys_y, '*')
     plt.show()
-    
 
-    return peakMean - valleyMean
+    return peaks, valleys
+    
 
 def compEpp(Edata):
     peaks, valleys = findPeakValley(Edata, E0, noiseStd=2e-5)
@@ -123,7 +147,9 @@ def compFFT(data):
     :param data: 实测结果
     :return:
     '''
-    pack = data.E[44200: 45200]   # 选取某个发射线圈的数据包
+    pack = data.E[60500: 62000]   # 选取某个发射线圈的数据包
+    dataE = data.E
+    peaks = []
 
     p = []   # 保存非零的数据
     PG = False   # 启动筛选的开关
@@ -152,7 +178,7 @@ def compFFT(data):
     plt.xlabel("f/Hz")
     plt.ylabel("v/V")
     plt.scatter(f0, peak, color='red', marker='*')
-    plt.text(f0+200, peak, "f0={:.0f}Hz".format(f0))
+    plt.text(f0+100, peak, "f0={:.0f}Hz, peak={:.2e}V".format(f0, peak))
     plt.grid()
     plt.show()
 
@@ -160,12 +186,12 @@ def compFFT(data):
 if __name__ == '__main__':
     # 用pandas读取
     data = pd.read_csv('adcV.csv', names=['i', 'E'], header=0)
+    E0 = data.loc[0: 10000]['E'].mean()  # 求E的均值
 
-    E0 = data.loc[0: 10000]['E'].mean()    # 求E的均值
-    #vpps = findPeakValley(data, 0, noiseStd=6e-6)
-    # print('vpps: \n', np.round(np.array(vpps), 0))
+    # 寻峰，并计算均值
+    #findPeakValley(data, 0, noiseStd=6e-6)
 
-    #compEpp(data.loc[0: 5000])
+    # compEpp(data.loc[0: 65000])
 
     compFFT(data)
 
