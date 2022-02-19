@@ -85,36 +85,27 @@ def getData(q):
         time.sleep(0.5)
 
 
-def readRecData(qADC, qGyro, qAcc):
-    port = "COM5"
-    ser = serial.Serial(port, 921600, timeout=0.5)
+def readRecData(q1, q2, q3):
+    port = "COM4"
+    ser = serial.Serial(port, 921600, timeout=0.02)
     if ser.isOpen():
         print("open {} success!\n".format(port))
     else:
         raise RuntimeError("open failed")
 
+    adcVlist = []
+    i = 1
+    t0 = time.time()
     while True:
-        t0 = time.time()
-
-        data = ser.readline()
-        adcRe = re.findall(b' \d{5}', data)
-        if adcRe:
-            adcV = np.array([int(v) / 1e7 for v in adcRe])  # 原始信号放大1000倍，然后在MCU中放大10000倍
-            adcAvg = adcV.mean()
-            qADC.put(adcV - adcAvg)
-
+        data = ser.read(2)
+        adcV = int.from_bytes(data, 'little')
+        if adcV == 0:
+            if adcVlist:
+                q1.put(adcVlist)
+            adcVlist = []
         else:
-            qADC.put([0] * 200)
-
-            gyroRe = re.search(b'GYRO: (.*)', data)
-            if gyroRe:
-                gyroData = re.findall(b'(-?\d*\.\d*)', gyroRe.group()[:-2])
-                qGyro.put([float(w) for w in gyroData])
-
-            accRe = re.search(b'ACCDATA: (.*)', data)
-            if accRe:
-                accData = re.findall(b'(-?\d*\.\d*)', accRe.group()[:-2])
-                qAcc.put([float(a) for a in accData])
+            adcVlist.append(adcV * 1e-6)
+        i += 1
 
 
 def plotRecData(qADC, qGyro, qAcc, currents, file=None):
@@ -174,7 +165,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     iVS = 0
 
     # sim data
-    state = np.array([0, 0, 240 - 0.75, 1, 0, 0, 0])  # 真实值
+    state = np.array([0, 0, 145 + 7.5, 1, 0, 0, 0])  # 真实值
     coils = CoilArray(np.array(currents) + 0.54)
     VppSim = coils.h(state) * 2
 
@@ -194,6 +185,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
         # ADC  
         if not qADC.empty():
             adcV = qADC.get()
+            adcVmean = np.array(adcV).mean()
             vpp = findPeakValley(adcV, 0, 6e-6)
             if vpp:
                 iVS += 1
@@ -204,7 +196,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
 
             n = len(adcV)
             for v in adcV:
-                yADC.put(v)
+                yADC.put(v - adcVmean)
                 iADC += 1
                 xADC.put(iADC)
 
@@ -273,7 +265,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
 
     timer = pg.Qt.QtCore.QTimer()
     timer.timeout.connect(update)
-    timer.start(50)
+    timer.start(10)
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
 
@@ -290,6 +282,7 @@ def findPeakValley(data, E0, noiseStd):
     :return:
     '''
     dataSize = len(data)
+    E0 = np.array(data).mean()
     # startIndex = data._stat_axis._start
     # 找出满足条件1的峰和谷
     peaks, valleys = [], []
