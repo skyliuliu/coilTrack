@@ -1,3 +1,4 @@
+import binascii
 import csv
 import re
 import sys
@@ -14,7 +15,7 @@ import serial.tools.list_ports
 from coilArray import CoilArray
 
 
-def readCurrent(q):
+def runsend(open=True):
     port = "COM3"
     ser = serial.Serial(port, 921600, timeout=0.5)
     if ser.isOpen():
@@ -22,44 +23,59 @@ def readCurrent(q):
     else:
         raise RuntimeError("open failed")
 
-    while True:
-        data = ser.readline()
-        '''
-        data数据格式
-        b'9\xaaU\xeb\x90chC:039\xaaU\xeb\x90chC:039'
-        \xaaU\xeb\x90chD:000
-        '''
-        dataRe = re.findall(b'ch\w:\d{3}', data)
-        print('--time:{:.3f}--------data size={}---------'.format(time.time(), len(dataRe)))
-        chCurrents = {
-            'ch1': {},
-            'ch2': {},
-            'ch3': {},
-            'ch4': {},
-            'ch5': {},
-            'ch6': {},
-            'ch7': {},
-            'ch8': {},
-            'ch9': {},
-            'chA': {},
-            'chB': {},
-            'chC': {},
-            'chD': {},
-            'chE': {},
-            'chF': {},
-            'chG': {}
-        }
-        for chc in dataRe:
-            ch = str(chc[:3], encoding='utf-8')
-            currentStr = str(chc[-3:], encoding='utf-8')
-            # 取整数部分和小数部分，拼接起来后只取小数点后两位有效数字
-            current = round(int(currentStr[0]) + int(currentStr[1:3]) * 0.01, 2)
-            if chCurrents[ch].get(current) == None:
-                chCurrents[ch][current] = 0
-            else:
-                chCurrents[ch][current] += 1
-        print(chCurrents)
-        q.put(chCurrents)
+    # 启动发射端的命令
+    cmd = "EB 90 01 64 0a 03 e8 00 00 00 AA 55" if open else "EB 90 00 64 0a 03 e8 00 00 00 AA 55"
+    cmdList = cmd.split(' ')
+    cmd2 = b''.join([binascii.a2b_hex(s) for s in cmdList])
+    ser.write(cmd2)
+
+    data = ser.readline()
+    '''
+    data数据格式
+    b'9\xaaU\xeb\x90chC:039\xaaU\xeb\x90chC:039'
+    \xaaU\xeb\x90chD:000
+    '''
+    dataRe = re.findall(b'ch\w:\d{3}', data)
+    print('--time:{:.3f}--------data size={}---------'.format(time.time(), len(dataRe)))
+    chCurrents = {
+        'ch1': {},
+        'ch2': {},
+        'ch3': {},
+        'ch4': {},
+        'ch5': {},
+        'ch6': {},
+        'ch7': {},
+        'ch8': {},
+        'ch9': {},
+        'chA': {},
+        'chB': {},
+        'chC': {},
+        'chD': {},
+        'chE': {},
+        'chF': {},
+        'chG': {}
+    }
+    for chc in dataRe:
+        ch = str(chc[:3], encoding='utf-8')
+        currentStr = str(chc[-3:], encoding='utf-8')
+        # 取整数部分和小数部分，拼接起来后只取小数点后两位有效数字
+        current = round(int(currentStr[0]) + int(currentStr[1:3]) * 0.01, 2)
+        if chCurrents[ch].get(current) == None:
+            chCurrents[ch][current] = 0
+        else:
+            chCurrents[ch][current] += 1
+    print(chCurrents)
+    
+    currents = []
+    for ch in chCurrents:
+        chCurrent = chCurrents.get(ch)
+        currenMax = 0
+        for current in chCurrent:
+            if chCurrent.get(current) > currenMax:
+                currenMax = current 
+        currents.append(currenMax)
+    print(currents)
+    return currents
 
 
 def getData(q):
@@ -166,7 +182,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
 
     # sim data
     state = np.array([0, 0, 145 + 7.5, 1, 0, 0, 0])  # 真实值
-    coils = CoilArray(np.array(currents) + 0.54)
+    coils = CoilArray(np.array(currents))
     VppSim = coils.h(state) * 2
 
     # IMU
@@ -309,19 +325,14 @@ def findPeakValley(data, E0, noiseStd):
 
 
 def runRec():
-    currents = [2.15, 2.18, 2.26, 2.33, 2.27, 2.25, 2.24, 2.32, 2.22, 2.34, 2.31, 2.27, 2.3, 2.3, 2.38, 2.28]
     q1, q2, q3 = Queue(), Queue(), Queue()
     # readRecData(q1, q2, q3)
     procReadRec = Process(target=readRecData, args=(q1, q2, q3))
     procReadRec.daemon = True
     procReadRec.start()
 
+    currents = runsend(open=True)
     plotRecData(q1, q2, q3, currents=currents, file=None)
-
-
-def runSend():
-    q = Queue()
-    readCurrent(q)
 
 
 if __name__ == "__main__":

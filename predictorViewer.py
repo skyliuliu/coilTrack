@@ -416,7 +416,7 @@ def track3D(state):
     area.addDock(eulerDock, 'bottom', posDock)
 
     # add time cost
-    timeDock = Dock("\nTime cost & iter\n", size=(160, 10))
+    timeDock = Dock("\nTime cost\n", size=(160, 10))
     timeText = QtGui.QLabel()
     timeText.setText("time cost = 0 s")
     timeDock.addWidget(timeText)
@@ -453,9 +453,9 @@ def track3D(state):
         sphereMesh.translate(*pos)
         
         # update state
-        posText.setText('  ' + ', '.join(str(i * 0.1) for i in pos) + "(cm)")
-        eulerText.setText('  ' + ', '.join(str(a) for a in euler) + "(degree)")
-        timeText.setText(' ' + "time cost = " + str(state[-2]))
+        posText.setText(" {}cm".format(np.round(pos, 2)))
+        eulerText.setText(" {}degree".format(np.round(euler, 0)))
+        timeText.setText(' ' + "time cost = {:.0f}ms".format(state[-2] * 1000))
         iterText.setText(' ' + "iter times = " + str(int(state[-1])))
         i += 1
 

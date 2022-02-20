@@ -11,7 +11,7 @@ from scipy.optimize import least_squares
 from coilArray import CoilArray
 from calculatorUKF import trajectoryLine
 from predictorViewer import q2R, plotPos, plotErr, plotTrajectory, track3D, q2Euler
-from readData import readRecData, findPeakValley
+from readData import readRecData, findPeakValley, runsend
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -42,16 +42,15 @@ def get_init_u(A, tao):
 
 
 class Tracker:
-    currents = [2.15, 2.18, 2.26, 2.33, 2.27, 2.25, 2.24, 2.32, 2.22, 2.34, 2.31, 2.27, 2.3, 2.3, 2.38, 2.28]
-    coils = CoilArray(np.array(currents) + 0.54)
-
     maxIter = 50        # 最大迭代次数
     printBool = True    # 是否打印结果
 
-    def __init__(self, state):
+    def __init__(self, state, currents):
         self.state = state[:7]
         self.n = len(self.state)
-        self.m = self.coils.coilNum + 3
+        self.currents = currents
+        self.coils = CoilArray(np.array(currents))
+        self.m = self.coils.coilNum
 
     def derive(self, param_index):
         """
@@ -68,8 +67,8 @@ class Tracker:
             delta = 0.001
         state1[param_index] += delta
         state2[param_index] -= delta
-        data_est_output1 = self.coils.hh(state1)
-        data_est_output2 = self.coils.hh(state2)
+        data_est_output1 = self.coils.h(state1)
+        data_est_output2 = self.coils.h(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
@@ -89,7 +88,7 @@ class Tracker:
         :param output_data: 观测量 (m, )
         :return: residual (m, )
         """
-        data_est_output = self.coils.hh(state)
+        data_est_output = self.coils.h(state)
         residual = output_data - data_est_output
         return residual
 
@@ -249,46 +248,6 @@ class Tracker:
             err_pos, err_em = self.compErro(self.state, states)
             return (err_pos, err_em)
 
-    def run(self):
-        '''
-        启动实时定位
-        '''
-        qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-        z = []
-        state0 = multiprocessing.Array('f', [0, 0, 200, 1, 0, 0, 0, 0, 0])
-
-        # 读取串口数据
-        procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
-        procReadRec.daemon = True
-        procReadRec.start()
-
-        # 描绘3D轨迹
-        pTrack3D = multiprocessing.Process(target=track3D, args=(state0, ))
-        pTrack3D.daemon = True
-        pTrack3D.start()
-
-        while True:
-            if not qGyro.empty():
-                qGyro.get()
-            if not qAcc.empty():
-                accData = qAcc.get()
-            else:
-                accData = None
-
-            if not qADC.empty():
-                adcV = qADC.get()
-                vm = findPeakValley(adcV, 0, 4e-6) * 0.5
-                if vm:
-                    z.append(vm * 1e6)
-            if len(z) == 16:
-                if accData:
-                    for i in range(3):
-                        z.append(accData[i])
-                    self.LM(state0, z)
-                z.clear()
-            time.sleep(0.05)
-
-
     def measureDataPredictor(self, state0, states, plotType, plotBool):
         '''
         使用实测结果估计位姿
@@ -418,11 +377,53 @@ class Tracker:
         plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
 
+def run():
+    '''
+    启动实时定位
+    '''
+    qADC, qGyro, qAcc = Queue(), Queue(), Queue()
+    z = []
+    state0 = multiprocessing.Array('f', [0, 0, 200, 1, 0, 0, 0, 0, 0])
+
+    # 读取接收端数据
+    procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
+    procReadRec.daemon = True
+    procReadRec.start()
+    time.sleep(0.5)
+    
+    # 读取发射端的电流，然后创建定位器对象
+    currents = runsend(open=True)
+    tracker = Tracker(state0, currents)
+
+    # 描绘3D轨迹
+    pTrack3D = multiprocessing.Process(target=track3D, args=(state0, ))
+    pTrack3D.daemon = True
+    pTrack3D.start()
+
+    while True:
+        if not qGyro.empty():
+            qGyro.get()
+        if not qAcc.empty():
+            accData = qAcc.get()
+        else:
+            accData = None
+
+        if not qADC.empty():
+            adcV = qADC.get()
+            vm = findPeakValley(adcV, 0, 4e-6) * 0.5
+            if vm:
+                z.append(vm * 1e6)
+        if len(z) == 16:
+            # if accData:
+            #     for i in range(3):
+            #         z.append(accData[i])
+            tracker.LM(state0, z)
+            z.clear()
+        time.sleep(0.05)
+
 if __name__ == '__main__':
     state0 = np.array([0, 0, 0.2, 1, 0, 0, 0, 0, 0])  # 初始值
     states = [np.array([0, 0, 0.215 - 0.0075, 1, 0, 0, 0])]  # 真实值
-
-    tracker = Tracker(state0)
 
     #err = tracker.sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2))
     # print('---------------------------------------------------\n')
@@ -436,4 +437,4 @@ if __name__ == '__main__':
 
     # tracker.measureDataPredictorScipy(state0, states)
 
-    tracker.run()
+    run()
