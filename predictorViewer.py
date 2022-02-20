@@ -17,6 +17,8 @@ import OpenGL.GL as ogl
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtGui
+from PyQt5.QtWidgets import QWidget
+from pyqtgraph.dockarea import DockArea, Dock
 
 
 def q2R(q):
@@ -350,9 +352,19 @@ def track3D(state):
     :return:
     '''
     app = QtGui.QApplication([])
+    qWidget = QWidget()
+    qWidget.setWindowTitle("磁定位显示界面")
+    qWidget.resize(800, 600)
+    qWidget.GLDock = Dock("\n3D位姿\n", size=(600, 500))
+
     w = gl.GLViewWidget()
+    qWidget.GLDock.addWidget(w)
+
+    area = DockArea()
+    area.addDock(qWidget.GLDock, 'left')
+
     # w.setWindowTitle('3d trajectory')
-    w.resize(600, 500)
+    # w.resize(600, 500)
     # instance of Custom3DAxis
     axis = Custom3DAxis(w, color=(0.6, 0.6, 0.2, .6))
     w.addItem(axis)
@@ -363,6 +375,11 @@ def track3D(state):
     gx.setSize(x=40, y=40, z=10)
     gx.setSpacing(x=5, y=5)
     w.addItem(gx)
+
+    h = QtGui.QHBoxLayout()
+    qWidget.setLayout(h)
+    h.addWidget(area)
+
     # trajectory line
     pos0 = np.array([[0, 0, 0]]) * 0.1
     pos, q = np.array(state[:3]), state[3:7]
@@ -380,9 +397,39 @@ def track3D(state):
                               glOptions='opaque')
     ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
     w.addItem(ArrowMesh)
-    w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
-    .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
-    w.show()
+    # w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
+    # .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
+    #w.show()
+    # add Position
+
+    posDock = Dock("\nPosition\n", size=(160, 10))
+    posText = QtGui.QLabel()
+    posText.setText(' ' + ' '.join(str(i) for i in pos0) + " (cm)")
+    posDock.addWidget(posText)
+    area.addDock(posDock, 'right')
+
+    # add euler angles
+    eulerDock = Dock("\nEuler angles\n", size=(160, 10))
+    eulerText = QtGui.QLabel()
+    eulerText.setText(' ' + ', '.join(str(a) for a in [0, 0, 0]) + "(degree)")
+    eulerDock.addWidget(eulerText)
+    area.addDock(eulerDock, 'bottom', posDock)
+
+    # add time cost
+    timeDock = Dock("\nTime cost & iter\n", size=(160, 10))
+    timeText = QtGui.QLabel()
+    timeText.setText("time cost = 0 s")
+    timeDock.addWidget(timeText)
+    area.addDock(timeDock, 'bottom', eulerDock)
+
+    # add iter times
+    iterDock = Dock("\niter times\n", size=(160, 10))
+    iterText = QtGui.QLabel()
+    iterText.setText("iter = 0")
+    iterDock.addWidget(iterText)
+    area.addDock(iterDock, 'bottom', timeDock)
+
+    qWidget.show()
 
     i = 1
     pts = pos.reshape(1, 3)
@@ -404,8 +451,12 @@ def track3D(state):
         ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
         ArrowMesh.translate(*pos)
         sphereMesh.translate(*pos)
-        w.setWindowTitle('position={}cm || pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0'
-    .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
+        
+        # update state
+        posText.setText('  ' + ', '.join(str(i * 0.1) for i in pos) + "(cm)")
+        eulerText.setText('  ' + ', '.join(str(a) for a in euler) + "(degree)")
+        timeText.setText(' ' + "time cost = " + str(state[-2]))
+        iterText.setText(' ' + "iter times = " + str(int(state[-1])))
         i += 1
 
     timer = QtCore.QTimer()
@@ -414,3 +465,7 @@ def track3D(state):
 
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
+
+if __name__ == '__main__':
+    state = np.array([0, 0, 215, 1, 0, 0, 0, 0.1, 2])
+    track3D(state)
