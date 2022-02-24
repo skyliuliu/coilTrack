@@ -50,7 +50,7 @@ def findPeakValley(data, E0, noiseStd):
     peakSum = peaks[0][1]
     index = 1
     for point in peaks[1:]:
-        if point[0] - start < 800:   # 每包数据起始和结尾下标之差不超过800，下同
+        if point[0] - start < 2000:   # 每包数据起始和结尾下标之差不超过800，下同
             peakSum += point[1]
             index += 1
         else:
@@ -65,7 +65,7 @@ def findPeakValley(data, E0, noiseStd):
     valleySum = valleys[0][1]
     index = 1
     for point in valleys[1:]:
-        if point[0] - start < 800:
+        if point[0] - start < 2000:
             valleySum += point[1]
             index += 1
         else:
@@ -76,6 +76,7 @@ def findPeakValley(data, E0, noiseStd):
             index = 1
     print("peakMeans=", np.round(peakMeans, 6))
     print("valleyMeans=", np.round(valleyMeans, 6))
+    print("vmMeans=", (np.round(peakMeans, 6) - np.round(valleyMeans, 6)) / 2)
 
     # plot peaks and valleys in data fig
     peaks_x = [peak[0] for peak in peaks]
@@ -168,11 +169,12 @@ def fftPack(p):
     :param p: 每个包的数据（非零）
     :return:
     '''
+    print("pL=", len(p))
     pack = p[200:]   # 选取稳定阶段的数据
     L = len(pack)   # 数据长度
     print("L=", L)
     N = int(np.power(2, np.ceil(np.log2(L))))  # 下一个最近二次幂
-    Fs = 1/7.102e-6    # 采样率
+    Fs = 964 * 100    # 采样率
 
     FFT_y1 = np.abs(fft(pack, N)) / L * 2   # N点FFT 变化,但处于信号长度
     FFT_y1 = FFT_y1[range(int(N / 2))]   # 取一半
@@ -192,11 +194,11 @@ def fftPack(p):
 
 if __name__ == '__main__':
     # 用pandas读取
-    data = pd.read_csv('adcV.csv', names=['i', 'E'], header=0)
-    E0 = data.loc[0: 10000]['E'].mean()  # 求E的均值
+    data = pd.read_csv('adcV_20ms.csv', names=['i', 'E'], header=0)
+    E0 = data.loc[0: 1000]['E'].mean()  # 求E的均值
 
     # 寻峰，并计算均值
-    #findPeakValley(data, 0, noiseStd=6e-6)
+    #findPeakValley(data, E0, noiseStd=6e-6)
 
     # compEpp(data.loc[0: 65000])
 

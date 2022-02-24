@@ -12,7 +12,7 @@ from predictorViewer import q2R
 
 
 class CoilArray:
-    distance = 100  # 初级线圈之间的距离[m]
+    distance = 100  # 初级线圈之间的距离[mm]
     coilrows = 4    # 行数
     coilcols = 4    # 列数
     coilNum = coilrows * coilcols
@@ -135,10 +135,10 @@ class CoilArray:
         return EA
 
 if __name__ == '__main__':
-    currents = [2.15, 2.18, 2.26, 2.33, 2.27, 2.25, 2.24, 2.32, 2.22, 2.34, 2.31, 2.27, 2.3, 2.3, 2.38, 2.28]
+    currents = [2.21, 2.22, 2.31, 2.39, 2.33, 2.31, 2.29, 2.34, 2.29, 2.38, 2.36, 2.31, 2.35, 2.41, 2.42, 2.35]
     coils = CoilArray(np.array(currents))
     em2 = np.array([0, 0, 1], dtype=float)
     ii = 2
-    state = np.array([0, -8, 210, 1, 0, 0, 0])
+    state = np.array([0, -5, 145+7.5, 1, 0, 0, 0])
     vm = coils.h(state)
     print('vm(uV):\n', np.round(vm, 0))
