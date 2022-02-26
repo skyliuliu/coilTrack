@@ -174,7 +174,7 @@ class Tracker:
         timeCost = (datetime.datetime.now() - t0).total_seconds()
         state2[:] = np.concatenate((self.state, np.array([timeCost, i])))  # 输出的结果
         pos = np.round(self.state[:3], 3)
-        em = np.round(q2R(self.state[3: 7])[:, -1], 3)
+        em = np.round(q2R(self.state[3: 7])[2], 3)
         euler = q2Euler(self.state[3: 7])
 
         print('i={}, pos={}mm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
@@ -187,9 +187,9 @@ class Tracker:
         :param states: 真实值
         :return:
         '''
-        posTruth, emTruth = states[:3], q2R(states[3: 7])[:, -1]
+        posTruth, emTruth = states[:3], q2R(states[3: 7])[2]
         err_pos = np.linalg.norm(state[:3] - posTruth) / np.linalg.norm(posTruth)
-        err_em = np.linalg.norm(q2R(state[3: 7])[:, -1] - emTruth)  # 方向矢量本身是归一化的
+        err_em = np.linalg.norm(q2R(state[3: 7])[2] - emTruth)  # 方向矢量本身是归一化的
         print('pos={}: err_pos={:.0%}, err_em={:.0%}'.format(np.round(posTruth, 3), err_pos, err_em))
 
         return (err_pos, err_em)
@@ -207,8 +207,8 @@ class Tracker:
         Esim = np.zeros(self.m)
 
         for j in range(self.m):
-            #Esim[j] = np.random.normal(Emid[j], std, 1)
-            Esim[j] = Emid[j] * (1 + sensor_err * (-1) ** j)
+            Esim[j] = np.random.normal(Emid[j], std, 1)
+            #Esim[j] = Emid[j] * (1 + sensor_err * (-1) ** j)
         return Esim
 
     def sim(self, states, state0, sensor_std, sensor_err, plotType, plotBool):
@@ -286,7 +286,7 @@ class Tracker:
 
     def funScipy(self, state, coilIndex, Emea):
         d = state[:3] - self.coils.coilArray[coilIndex, :]
-        em2 = q2R(state[3: 7])[:, -1]
+        em2 = q2R(state[3: 7])[2]
         #print('pos={}, em={}'.format(state[:3], em2))
     
         Eest = np.zeros(self.m)
@@ -425,11 +425,12 @@ def run():
         time.sleep(0.05)
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 200.0, 1, 0, 0, 0, 0, 0], dtype=float)  # 初始值
-    states = np.array([10, 20, 250.0, 1, 0, 0, 0], dtype=float)  # 真实值
+    np.set_printoptions(suppress=True)
+    state0 = np.array([0, 0, 100, 1, 0, 0, 0, 0, 0], dtype=float)  # 初始值
+    states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262 ], dtype=float)  # 真实值
 
     tracker = Tracker(states, currents=[2] * 16)
-    err = tracker.sim(states, state0, sensor_std=10, sensor_err=0.01, plotBool=False, plotType=(1, 2))
+    err = tracker.sim(states, state0, sensor_std=5, sensor_err=0.01, plotBool=False, plotType=(1, 2))
     # print('---------------------------------------------------\n')
     # state0S = np.array([0, 0, 0.3, 0, 0, 0, 1])   # 初始值
     # tracker.simScipy(states, state0S, sensor_std=10)

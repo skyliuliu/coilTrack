@@ -109,7 +109,7 @@ class CoilArray:
         :return: E 感应电压 [1e-6V] (m, )
         """
         dArray0 = state[:3] - self.coilArray
-        em2 = q2R(state[3: 7])[:, -1]
+        em2 = q2R(state[3: 7])[2]
 
         E = np.zeros(self.coilNum)
         for i, d in enumerate(dArray0):
