@@ -346,16 +346,16 @@ def trajectoryLine(shape, pointsNum):
     :return: 【np.array】线上点的坐标集合 (pointsNum, 3)
     '''
     if shape == "straight":
-        line = [[x, 0, 0.3] for x in np.linspace(-0.1, 0.1, pointsNum)]
+        line = [[x, 0, 300] for x in np.linspace(-100, 100, pointsNum)]
     elif shape == "sin":
-        line_x = np.linspace(-0.1, 0.1, pointsNum)
+        line_x = np.linspace(-100, 100, pointsNum)
         line_y = np.sin(line_x * pointsNum * np.pi * 0.5) * 0.1
-        line = [[x, y, 0.3] for (x, y) in zip(line_x, line_y)]
+        line = [[x, y, 300] for (x, y) in zip(line_x, line_y)]
     elif shape == "circle":
         line0 = np.linspace(0, 2 * np.pi, pointsNum)
-        line_x = np.sin(line0) * 0.1 + 0.1
-        line_y = np.cos(line0) * 0.1
-        line = [[x, y, 0.3] for (x, y) in zip(line_x, line_y)]
+        line_x = np.sin(line0) * 100 + 100
+        line_y = np.cos(line0) * 100
+        line = [[x, y, 300] for (x, y) in zip(line_x, line_y)]
     else:
         raise TypeError("shape is not right!!!")
     return line

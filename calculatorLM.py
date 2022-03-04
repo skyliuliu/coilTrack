@@ -52,6 +52,37 @@ class Tracker:
         self.coils = CoilArray(np.array(currents))
         self.m = self.coils.coilNum
 
+    def h(self, state):
+        '''
+        观测函数
+        :return: 【np.array】观测值
+        '''
+        dArray0 = state[:3] - self.coils.coilArray
+        em2 = q2R(state[3: 7])[2]
+
+        E = np.zeros(self.coils.coilNum)
+        for i, d in enumerate(dArray0):
+            E[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+        return E
+
+    def hh(self, state):
+        """
+        线圈+IMU的观测方程
+        :param state: 预估的状态量 (n, )
+        :return: E 感应电压 [1e-6V] (m, )
+        """
+        dArray0 = state[:3] - self.coils.coilArray
+        em2 = q2R(state[3: 7])[:, -1]
+
+        EA = np.zeros(self.coils.coilNum + 3)
+        for i, d in enumerate(dArray0):
+            EA[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+
+        EA[-3] = -1000 * em2[-3]  # x反向
+        EA[-2] = -1000 * em2[-2]  # y反向
+        EA[-1] = 1000 * em2[-1]   # z正向
+        return EA
+
     def derive(self, param_index):
         """
         指定状态量的偏导数
@@ -67,8 +98,8 @@ class Tracker:
             delta = 0.1
         state1[param_index] += delta
         state2[param_index] -= delta
-        data_est_output1 = self.coils.h(state1)
-        data_est_output2 = self.coils.h(state2)
+        data_est_output1 = self.h(state1)
+        data_est_output2 = self.h(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
@@ -88,7 +119,7 @@ class Tracker:
         :param output_data: 观测量 (m, )
         :return: residual (m, )
         """
-        data_est_output = self.coils.h(state)
+        data_est_output = self.h(state)
         residual = output_data - data_est_output
         return residual
 
@@ -203,7 +234,7 @@ class Tracker:
         :param sensor_err: 【float】sensor的噪声误差百分比[100%]
         :return: 模拟值, (num_data, )
         """
-        Emid = self.coils.h(state)  # 模拟数据的中间值
+        Emid = self.h(state)  # 模拟数据的中间值
         Esim = np.zeros(self.m)
 
         for j in range(self.m):

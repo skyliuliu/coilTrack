@@ -198,9 +198,9 @@ if __name__ == '__main__':
     E0 = data.loc[0: 1000]['E'].mean()  # 求E的均值
 
     # 寻峰，并计算均值
-    #findPeakValley(data, E0, noiseStd=6e-6)
+    findPeakValley(data, E0, noiseStd=6e-6)
 
     # compEpp(data.loc[0: 65000])
 
-    compFFT(data)
+    #compFFT(data)
 
