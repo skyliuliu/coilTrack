@@ -78,14 +78,14 @@ class Predictor:
 
         E = np.zeros(self.m)
         for i, d in enumerate(dArray0):
-            E[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+            E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1s[i] ,em2=em2, ii=self.currents[i])
         return E
 
     def generateData(self, stateX, std):
         '''
         生成模拟数据
         :param stateX: 【np.array】/【se3】真实位姿
-        :param Std: 【float】传感器输出值的标准差
+        :param std: 【float】传感器输出值的标准差/误差比
         :return:
         '''
         TX = self.tR(stateX)
@@ -95,7 +95,8 @@ class Predictor:
 
         simData = np.zeros(self.m)
         for j in range(self.m):
-            simData[j] = np.random.normal(midData[j], std, 1)
+            #simData[j] = np.random.normal(midData[j], std, 1)
+            simData[j] = midData[j] * (1 + (-1) ** j * std)
 
         if self.printBool:
             print('turth: t={}, ez={}'.format(np.round(t, 3), np.round(ez, 3)))
@@ -168,7 +169,7 @@ class Predictor:
         """
         tao = 1e-3
         eps_stop = 1e-9
-        eps_step = 1e-6
+        eps_step = 1e-3
         eps_residual = 1e-3
 
         t0 = datetime.datetime.now()
@@ -253,19 +254,20 @@ class Predictor:
         t = T[:3, 3]
         ez = T[2, :3]
         TX = self.tR(stateX)
-        err_pos = np.linalg.norm(T[:3, 3] - TX[:3, 3]) / np.linalg.norm(T[:3, 3])
-        err_em = np.linalg.norm(ez - TX[2, :3])    # 方向矢量本身是归一化的
-        print('\nt={}mm, ez={}: err_t={:.0%}, err_em={:.0%}'.format(np.round(t, 1), np.round(ez, 3), err_pos, err_em))
+        err_pos = np.linalg.norm(T[:3, 3] - TX[:3, 3])   # 位移之差的模
+        err_em = np.arccos(np.dot(ez, TX[2, :3]) / np.linalg.norm(ez) / np.linalg.norm(TX[2, :3])) * 57.3   # 方向矢量形成的夹角
+        print('\nt={}mm, ez={}: err_t={:.0f}mm, err_em={:.1f}deg'.format(np.round(t, 1), np.round(ez, 3), err_pos, err_em))
 
         return (err_pos, err_em)
 
-    def sim(self, stateX):
+    def sim(self, sensor_std, stateX):
         '''
+        :param sensor_std: 【float】sensor的噪声标准差[μV]或者误差百分比
         :param stateX: 【np.array】/【se3】真实位姿
         使用模拟的观测值验证算法的准确性
         :return:
         '''
-        measureData = self.generateData(std=3, stateX=stateX)
+        measureData = self.generateData(std=sensor_std, stateX=stateX)
         self.LM(measureData)
 
         err_pos, err_em = self.compErro(self.state, stateX)
@@ -375,7 +377,7 @@ class Predictor:
             stateMP = np.asarray(resultList)
             plotTrajectory(stateLine, stateMP, sensor_std)
 
-    def simErrDistributed(self, contourBar, sensor_std=10, pos_or_ori=1):
+    def simErrDistributed(self, contourBar, sensor_std=0.01, pos_or_ori=0):
         '''
         模拟误差分布
         :param contourBar: 【np.array】等高线的刻度条
@@ -385,8 +387,8 @@ class Predictor:
         '''
         n = 10
         x, y = np.meshgrid(np.linspace(-200, 200, n), np.linspace(-200, 200, n))
-        state0 = np.array([0, 0, 300, 1, 0, 0, 0])
-        stateX = np.array([0, 0, 300, 0, 1, 0, 0])
+        state0 = np.array([0, 0, 300, 1, 0, 0, 0], dtype=float)
+        stateX = np.array([0, 0, 300, 1, 2, 3, 0], dtype=float)
         z = np.zeros((n, n))
         for i in range(n):
             for j in range(n):
@@ -394,24 +396,26 @@ class Predictor:
                 # state0[1] = y[i, j]
                 stateX[0] = x[i, j]
                 stateX[1] = y[i, j]
-                z[i, j] = self.sim(stateX=stateX)[pos_or_ori]
+                z[i, j] = self.sim(sensor_std=sensor_std, stateX=stateX)[pos_or_ori]
+                self.state = state0
 
         plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 300, 0, 1, 0, 0], dtype=float)  # 初始值
-    states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262], dtype=float)  # 真实值
+    state0 = np.array([0, 0, 300, 1, 0, 0, 0], dtype=float)  # 初始值
+    #states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262], dtype=float)  # 真实值
+    states = np.array([-100, 30, 300, 1, 0, 0, 0], dtype=float)
 
     state = se3(vector=np.array([0, 0, 0, 0, 0, 100]))
     stateX = se3(vector=np.array([0.5, 0.2, 0.3, 0, 0, 233.7]))
 
     pred = Predictor(state=state0, currents=[2] * 16)
 
-    #pred.sim(stateX)
+    #pred.sim(sensor_std=0.03, stateX=states)
 
     #pred.simScipy(stateX=stateX, sensor_std=3)
 
     #pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=1, plotBool=True)
 
-    pred.simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=3, pos_or_ori=0)
+    pred.simErrDistributed(contourBar=np.linspace(0, 20, 9), sensor_std=0.02, pos_or_ori=0)

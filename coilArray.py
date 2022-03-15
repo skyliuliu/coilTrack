@@ -33,10 +33,26 @@ class CoilArray:
     em1 = np.array([0, 0, 1], dtype=float)   # 发射线圈朝向
 
     def __init__(self, currents):
+        '''
+        排列方式：
+        0 1 2 3
+        4 5 6 7
+        8 9 10 11
+        12 13 14 15
+        '''
+        # XY坐标：
         for row in range(self.coilrows):
             for col in range(self.coilcols):
                 self.coilArray[row * self.coilrows + col] = np.array(
                     [-0.5 * self.CAlength + self.distance * col, 0.5 * self.CAwidth - self.distance * row, 0])
+
+        # 线圈朝向
+        self.em1s = np.array([
+            [-1, 1, 2 * np.sqrt(2 / 3)], [-1, 3, 2 * np.sqrt(10 / 3)], [1, 3, 2 * np.sqrt(10 / 3)], [1, 1, 2 * np.sqrt(2 / 3)],
+            [-3, 1, 2 * np.sqrt(10 / 3)], [-1, 1, 2 * np.sqrt(2)], [1, 1, 2 * np.sqrt(2)], [3, 1, 2 * np.sqrt(10 / 3)],
+            [-3, -1, 2 * np.sqrt(10 / 3)], [-1, -1, 2 * np.sqrt(2)], [1, -1, 2 * np.sqrt(2)], [3, -1, 2 * np.sqrt(10 / 3)],
+            [-1, -1, 2 * np.sqrt(2 / 3)], [-1, -3, 2 * np.sqrt(10 / 3)], [1, -3, 2 * np.sqrt(10 / 3)], [1, -1, 2 * np.sqrt(2 / 3)]
+        ])
 
         # 精确计算线圈的面积【mm^2】，第i层线圈的面积为pi * (r + d * i) **2
         self.S1 = self.n1 // self.nr1 * np.pi * sum([(self.r1 + self.d1 * j) ** 2 for j in range(self.nr1)]) 
@@ -44,7 +60,7 @@ class CoilArray:
 
         self.currents = currents
 
-    def inducedVolatage(self, em2, ii, d):
+    def inducedVolatage(self, em1, em2, ii, d):
         '''
         计算发射线圈在接收线圈中产生的感应电动势
         **************************
@@ -52,6 +68,7 @@ class CoilArray:
         *1、线圈均可等效为磁偶极矩  *
         *2、线圈之间静止           *
         **************************
+        :param em1: 发射线圈的朝向 【np.array (3, )】
         :param em2: 接收线圈的朝向 【np.array (3, )】
         :param i: 接收线圈的电流[A]
         :param d: 接收线圈的坐标 【np.array (3, )】
@@ -60,11 +77,11 @@ class CoilArray:
         dNorm = np.linalg.norm(d)
         er = d / dNorm
 
-        self.em1 /= np.linalg.norm(self.em1)
+        em1 /= np.linalg.norm(em1)
         em2 /= np.linalg.norm(em2)
 
         E = 2 * np.pi * 0.1 * self.freq * ii * self.S1 * self.S2 / dNorm ** 3 * (
-                3 * np.dot(er, self.em1) * np.dot(er, em2) - np.dot(self.em1, em2))
+                3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2))
         return abs(E) / 1000  # 单位1e-6V
 
     def solenoid(self, em2, ii, d):
@@ -113,7 +130,7 @@ class CoilArray:
 
         E = np.zeros(self.coilNum)
         for i, d in enumerate(dArray0):
-            E[i] = self.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+            E[i] = self.inducedVolatage(d=d, em1=self.em1s[i], em2=em2, ii=self.currents[i])
         return E
 
     def hh(self, state):
