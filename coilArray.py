@@ -47,11 +47,13 @@ class CoilArray:
                     [-0.5 * self.CAlength + self.distance * col, 0.5 * self.CAwidth - self.distance * row, 0])
 
         # 线圈朝向
+        angleInner = 45 * np.pi / 180   # 与z轴的夹角，向外旋转
+        angleOuter = 45 * np.pi / 180   # 与z轴的夹角，向外旋转
         self.em1s = np.array([
-            [-1, 1, 2 * np.sqrt(2 / 3)], [-1, 3, 2 * np.sqrt(10 / 3)], [1, 3, 2 * np.sqrt(10 / 3)], [1, 1, 2 * np.sqrt(2 / 3)],
-            [-3, 1, 2 * np.sqrt(10 / 3)], [-1, 1, 2 * np.sqrt(2)], [1, 1, 2 * np.sqrt(2)], [3, 1, 2 * np.sqrt(10 / 3)],
-            [-3, -1, 2 * np.sqrt(10 / 3)], [-1, -1, 2 * np.sqrt(2)], [1, -1, 2 * np.sqrt(2)], [3, -1, 2 * np.sqrt(10 / 3)],
-            [-1, -1, 2 * np.sqrt(2 / 3)], [-1, -3, 2 * np.sqrt(10 / 3)], [1, -3, 2 * np.sqrt(10 / 3)], [1, -1, 2 * np.sqrt(2 / 3)]
+            [-1, 1, np.sqrt(2) / np.tan(angleOuter)], [-1, 3, np.sqrt(10) / np.tan(angleOuter)], [1, 3, np.sqrt(10) / np.tan(angleOuter)], [1, 1, np.sqrt(2) / np.tan(angleOuter)],
+            [-3, 1, np.sqrt(10) / np.tan(angleOuter)], [-1, 1, np.sqrt(2) / np.tan(angleInner)], [1, 1, np.sqrt(2) / np.tan(angleInner)], [3, 1, np.sqrt(10) / np.tan(angleOuter)],
+            [-3, -1, np.sqrt(10) / np.tan(angleOuter)], [-1, -1, np.sqrt(2) / np.tan(angleInner)], [1, -1, np.sqrt(2) / np.tan(angleInner)], [3, -1, np.sqrt(10) / np.tan(angleOuter)],
+            [-1, -1, np.sqrt(2) / np.tan(angleOuter)], [-1, -3, np.sqrt(10) / np.tan(angleOuter)], [1, -3, np.sqrt(10) / np.tan(angleOuter)], [1, -1, np.sqrt(2) / np.tan(angleOuter)]
         ])
 
         # 精确计算线圈的面积【mm^2】，第i层线圈的面积为pi * (r + d * i) **2

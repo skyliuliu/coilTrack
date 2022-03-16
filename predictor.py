@@ -69,8 +69,9 @@ class Predictor:
 
     def h(self, state):
         '''
-        观测函数
-        :return: 【np.array】观测值 (self.m,)
+        纯线圈的观测方程
+        :param state: 预估的状态量 (n, )
+        :return: E 感应电压 [1e-6V] (m, )
         '''
         T = self.tR(state)
         dArray0 = T[:3, 3] - self.coils.coilArray
@@ -78,8 +79,27 @@ class Predictor:
 
         E = np.zeros(self.m)
         for i, d in enumerate(dArray0):
-            E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1s[i] ,em2=em2, ii=self.currents[i])
+            E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1s[i],em2=em2, ii=self.currents[i])
         return E
+
+    def hh(self, state):
+        """
+        线圈+IMU的观测方程
+        :param state: 预估的状态量 (n, )
+        :return: E+A 感应电压 [1e-6V] + 方向矢量[1] (m, )
+        """
+        T = self.tR(state)
+        dArray0 = T[:3, 3] - self.coils.coilArray
+        em2 = T[:3, :3][2]
+
+        EA = np.zeros(self.m)
+        for i, d in enumerate(dArray0):
+            EA[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1s[i], em2=em2, ii=self.currents[i])
+
+        EA[-3] = -1000 * em2[-3]  # x反向
+        EA[-2] = -1000 * em2[-2]  # y反向
+        EA[-1] = 1000 * em2[-1]   # z正向
+        return EA
 
     def generateData(self, stateX, std):
         '''
@@ -387,8 +407,8 @@ class Predictor:
         '''
         n = 10
         x, y = np.meshgrid(np.linspace(-200, 200, n), np.linspace(-200, 200, n))
-        state0 = np.array([0, 0, 300, 1, 0, 0, 0], dtype=float)
-        stateX = np.array([0, 0, 300, 1, 2, 3, 0], dtype=float)
+        state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)
+        stateX = np.array([0, 0, 200, 1, 1, 0, 0], dtype=float)
         z = np.zeros((n, n))
         for i in range(n):
             for j in range(n):
@@ -405,17 +425,17 @@ class Predictor:
 if __name__ == '__main__':
     state0 = np.array([0, 0, 300, 1, 0, 0, 0], dtype=float)  # 初始值
     #states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262], dtype=float)  # 真实值
-    states = np.array([-100, 30, 300, 1, 0, 0, 0], dtype=float)
+    states = np.array([0, 0, 200, 1, -1, 1, 0], dtype=float)
 
-    state = se3(vector=np.array([0, 0, 0, 0, 0, 100]))
-    stateX = se3(vector=np.array([0.5, 0.2, 0.3, 0, 0, 233.7]))
+    state = se3(vector=np.array([0, 0, 0, 0, 0, 300]))
+    stateX = se3(vector=np.array([0.5 * np.pi, 0, 0, 0, 0, 300]))
 
     pred = Predictor(state=state0, currents=[2] * 16)
 
-    #pred.sim(sensor_std=0.03, stateX=states)
+    #pred.sim(sensor_std=0.02, stateX=states)
 
     #pred.simScipy(stateX=stateX, sensor_std=3)
 
-    #pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=1, plotBool=True)
+    #pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=0.02, plotBool=True)
 
-    pred.simErrDistributed(contourBar=np.linspace(0, 20, 9), sensor_std=0.02, pos_or_ori=0)
+    pred.simErrDistributed(contourBar=np.linspace(0, 50, 9), sensor_std=0.02, pos_or_ori=0)

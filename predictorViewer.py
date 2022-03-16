@@ -211,8 +211,8 @@ def plotTrajectory(stateLine, stateMP, sensor_std):
     plt.title('sensor_std={}'.format(sensor_std))
     plt.axis('equal')  # 坐标轴按照等比例绘图
     plt.gca().grid(b=True)
-    plt.xlabel('x/m')
-    plt.ylabel('y/m')
+    plt.xlabel('x/mm')
+    plt.ylabel('y/mm')
     plt.plot(stateLine[:, 0], stateLine[:, 1],'r')
     plt.plot(stateMP[:, 0], stateMP[:, 1], 'b--')
     plt.show()
