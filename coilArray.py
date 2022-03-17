@@ -12,9 +12,9 @@ from predictorViewer import q2R
 
 
 class CoilArray:
-    distance = 100  # 初级线圈之间的距离[mm]
-    coilrows = 4    # 行数
-    coilcols = 4    # 列数
+    distance = 150  # 初级线圈之间的距离[mm]
+    coilrows = 3    # 行数
+    coilcols = 3    # 列数
     coilNum = coilrows * coilcols
     CAlength = distance * (coilrows - 1)   # 阵列的长度（x方向尺寸）
     CAwidth = distance * (coilcols - 1)    # 阵列的宽度（y方向尺寸）
@@ -31,6 +31,9 @@ class CoilArray:
     d2 = 0.05  # 接收线圈线径【mm】
     freq = 5000   # 工作频率【Hz】
     em1 = np.array([0, 0, 1], dtype=float)   # 发射线圈朝向
+    em1x = np.array([1, 0, 0], dtype=float)  # 发射线圈x朝向
+    em1y = np.array([0, 1, 0], dtype=float)  # 发射线圈y朝向
+    em1z = np.array([0, 0, 1], dtype=float)  # 发射线圈z朝向
 
     def __init__(self, currents):
         '''
@@ -55,6 +58,34 @@ class CoilArray:
             [-3, -1, np.sqrt(10) / np.tan(angleOuter)], [-1, -1, np.sqrt(2) / np.tan(angleInner)], [1, -1, np.sqrt(2) / np.tan(angleInner)], [3, -1, np.sqrt(10) / np.tan(angleOuter)],
             [-1, -1, np.sqrt(2) / np.tan(angleOuter)], [-1, -3, np.sqrt(10) / np.tan(angleOuter)], [1, -3, np.sqrt(10) / np.tan(angleOuter)], [1, -1, np.sqrt(2) / np.tan(angleOuter)]
         ])
+
+        '''
+        XYZ交错排列
+        [0,0,1], [1,0,0], [0,-1,0],[0,0,1],
+        [1,0,0], [0,1,0], [1,0,0], [0,-1,0], 
+        [0,1,0], [-1,0,0], [0,-1,0], [-1,0,0], 
+        [0,0,1], [0,1,0], [-1,0,0], [0,0,1]
+        '''
+        # self.em1s = np.array([
+        #     [0,0,1], [1,0,0], [0,-1,0],[0,0,1],
+        #     [1,0,0], [0,1,0], [1,0,0], [0,-1,0], 
+        #     [0,1,0], [-1,0,0], [0,-1,0], [-1,0,0], 
+        #     [0,0,1], [0,1,0], [-1,0,0], [0,0,1]
+        # ], dtype=float)
+
+        '''
+        XYZ交错排列2
+        X Y Z X
+        Y Z X Y
+        Z X Y Z
+        X Y Z X
+        '''
+        self.em1s = np.array([
+            [0,0,1], [0,1,0], [0,0,1],[1,0,0],
+            [0,1,0], [0,0,1], [1,0,0], [0,1,0], 
+            [0,0,1], [1,0,0], [0,1,0], [0,0,1], 
+            [1,0,0], [0,1,0], [0,0,1], [1,0,0]
+        ], dtype=float)
 
         # 精确计算线圈的面积【mm^2】，第i层线圈的面积为pi * (r + d * i) **2
         self.S1 = self.n1 // self.nr1 * np.pi * sum([(self.r1 + self.d1 * j) ** 2 for j in range(self.nr1)]) 

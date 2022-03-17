@@ -44,7 +44,7 @@ class Predictor:
 
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
-        self.m = self.coils.coilNum
+        self.m = self.coils.coilNum * 3
 
         self.T = self.tR(state)
 
@@ -77,9 +77,15 @@ class Predictor:
         dArray0 = T[:3, 3] - self.coils.coilArray
         em2 = T[:3, :3][2]
 
+        # E = np.zeros(self.m)
+        # for i, d in enumerate(dArray0):
+        #     E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
+        # 正交线圈
         E = np.zeros(self.m)
         for i, d in enumerate(dArray0):
-            E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1s[i],em2=em2, ii=self.currents[i])
+            E[3*i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1x, em2=em2, ii=self.currents[i])
+            E[3*i + 1] = self.coils.inducedVolatage(d=d, em1=self.coils.em1y, em2=em2, ii=self.currents[i])
+            E[3*i + 2] = self.coils.inducedVolatage(d=d, em1=self.coils.em1z, em2=em2, ii=self.currents[i])
         return E
 
     def hh(self, state):
@@ -94,7 +100,7 @@ class Predictor:
 
         EA = np.zeros(self.m)
         for i, d in enumerate(dArray0):
-            EA[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1s[i], em2=em2, ii=self.currents[i])
+            EA[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
 
         EA[-3] = -1000 * em2[-3]  # x反向
         EA[-2] = -1000 * em2[-2]  # y反向
@@ -117,6 +123,7 @@ class Predictor:
         for j in range(self.m):
             #simData[j] = np.random.normal(midData[j], std, 1)
             simData[j] = midData[j] * (1 + (-1) ** j * std)
+            # simData[j] = midData[j] + (-1) ** j * std
 
         if self.printBool:
             print('turth: t={}, ez={}'.format(np.round(t, 3), np.round(ez, 3)))
@@ -340,6 +347,7 @@ class Predictor:
         stateResult = result.x
 
         err_t, err_em = self.compErro(stateResult, stateX)
+        return (err_t, err_em)
 
     def measureDataPredictorScipy(self, stateX):
         '''
@@ -416,16 +424,16 @@ class Predictor:
                 # state0[1] = y[i, j]
                 stateX[0] = x[i, j]
                 stateX[1] = y[i, j]
-                z[i, j] = self.sim(sensor_std=sensor_std, stateX=stateX)[pos_or_ori]
+                z[i, j] = self.simScipy(sensor_std=sensor_std, stateX=stateX)[pos_or_ori]
                 self.state = state0
 
         plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 300, 1, 0, 0, 0], dtype=float)  # 初始值
+    state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)  # 初始值
     #states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262], dtype=float)  # 真实值
-    states = np.array([0, 0, 200, 1, -1, 1, 0], dtype=float)
+    states = np.array([-50, 0, 200, 1, 0, 0, 0], dtype=float)
 
     state = se3(vector=np.array([0, 0, 0, 0, 0, 300]))
     stateX = se3(vector=np.array([0.5 * np.pi, 0, 0, 0, 0, 300]))
@@ -434,7 +442,7 @@ if __name__ == '__main__':
 
     #pred.sim(sensor_std=0.02, stateX=states)
 
-    #pred.simScipy(stateX=stateX, sensor_std=3)
+    #pred.simScipy(stateX=states, sensor_std=0.02)
 
     #pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=0.02, plotBool=True)
 
