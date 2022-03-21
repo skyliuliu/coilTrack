@@ -118,6 +118,7 @@ def readRecData(q1, q2, q3):
         if adcV == 0:
             if adcVlist:
                 q1.put(adcVlist)
+                print("adcVlist N=", len(adcVlist))
             adcVlist = []
         else:
             adcVlist.append(adcV * 1e-6)
@@ -208,7 +209,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
                 xVS.put(iVS)
                 yMea.put(vpp * 1e6)
                 ySim.put(VppSim[iVS % 16 - 1])
-                print('vpp={:.2f}uV'.format(vpp * 1e6))
+                #print('vpp={:.2f}uV'.format(vpp * 1e6))
 
             n = len(adcV)
             for v in adcV:
@@ -217,7 +218,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
                 xADC.put(iADC)
 
                 if fcsv:  # 导出数据
-                    fcsv.writerow((iADC, v))
+                    fcsv.writerow((iADC, v - adcVmean))
 
         else:
             n = 1000
@@ -330,9 +331,11 @@ def runRec():
     procReadRec = Process(target=readRecData, args=(q1, q2, q3))
     procReadRec.daemon = True
     procReadRec.start()
+    #time.sleep(1)
 
-    currents = runsend(open=True)
-    plotRecData(q1, q2, q3, currents=currents, file=None)
+    #currents = runsend(open=True)
+    currents = [2.21, 2.22, 2.31, 2.39, 2.33, 2.31, 2.29, 2.34, 2.29, 2.38, 2.36, 2.31, 2.35, 2.41, 2.42, 2.35]
+    plotRecData(q1, q2, q3, currents=currents, file='adcV.csv')
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 '''
 通信协议：
     name：       head/type/size/objid/instid/timestamp/data/crc
-    len(byte) :   1 / 1  / 2(从head-crc) /  4   /   2  / 2(该位上发不存在) / 0~64/ 1
+    len(byte) :   1 / 1  / 2  /  4  /   2  /2(该位上不存在)/ 0~64/ 1
 '''
 import serial
 from multiprocessing.dummy import Process
@@ -14,7 +14,10 @@ import numpy as np
 UAVTALK_SYNC_VAL = 0x3c
 UAVTALK_TYPE_MASK = 0x78
 UAVTALK_TYPE_VER = 0x20
-UAV_OBJ_SENSOR = 0xcda3a85c
+UAV_OBJ_ADC = 0xcda3a85c
+UAV_OBJ_ACC = 0x8B7BBFB6
+UAV_OBJ_GYRO = 0xADC3A85C
+
 
 def PIOS_CRC_updateByte(crc, data) :
     crc_table = [
@@ -43,89 +46,6 @@ def crc8Calculate(curCrc, data):
         val = PIOS_CRC_updateByte(val, data[i])
     return val
 
-def sensorUnpack(data):
-    # print(data)
-    lsmSensorData = np.array([[1,2,3,4],[5,5,5,5],[1,2,3,4],[1,2,3,4],[5,5,5,5],[1,2,3,4]], dtype = 'float32')
-    accel_x = lsmSensorData[0]
-    accel_y = lsmSensorData[1]
-    accel_z = lsmSensorData[2]
-    gyro_x = lsmSensorData[3]
-    gyro_y = lsmSensorData[4]
-    gyro_z = lsmSensorData[5]
-    akMag1SensorData = np.array([[1,2,3,4],[5,5,5,5],[1,2,3,4]], dtype = 'int16')
-    mag1_x = akMag1SensorData[0]
-    mag1_y = akMag1SensorData[1]
-    mag1_z = akMag1SensorData[2]
-    akMag2SensorData = np.array([[1,2,3,4],[5,5,5,5],[1,2,3,4]], dtype = 'int16')
-    mag2_x = akMag1SensorData[0]
-    mag2_y = akMag1SensorData[1]
-    mag2_z = akMag1SensorData[2]
-    sensorReadTimestamp = np.array([[1,2,3,4]], dtype = 'float32')
-    timedata = sensorReadTimestamp[0]
-
-    objId = int.from_bytes(data[0:4], 'little')   # 获取objId
-    # print(objId)
-    if objId == UAV_OBJ_SENSOR :
-        instId = int.from_bytes(data[4:6], 'little')   # 获取instId
-        for i in range(4) :
-            buff = struct.unpack('<f', data[6+i*4:10+i*4])
-            accel_x[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<f', data[22+i*4:26+i*4])
-            accel_y[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<f', data[38+i*4:42+i*4])
-            accel_z[i] = np.asarray(buff)
-
-        for i in range(4) :
-            buff = struct.unpack('<f', data[54+i*4:58+i*4])
-            gyro_x[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<f', data[70+i*4:74+i*4])
-            gyro_y[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<f', data[86+i*4:90+i*4])
-            gyro_z[i] = np.asarray(buff)
-        # print(struct.unpack('<h', data[102:104]))
-        for i in range(4) :
-            buff = struct.unpack('<h', data[102+i*2:104+i*2])
-            mag1_x[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<h', data[110+i*2:112+i*2])
-            mag1_y[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<h', data[118+i*2:120+i*2])
-            mag1_z[i] = np.asarray(buff)
-
-        for i in range(4) :
-            buff = struct.unpack('<h', data[126+i*2:128+i*2])
-            mag2_x[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<h', data[134+i*2:136+i*2])
-            mag2_y[i] = np.asarray(buff)
-        for i in range(4) :
-            buff = struct.unpack('<h', data[142+i*2:144+i*2])
-            mag2_z[i] = np.asarray(buff)
-
-        for i in range(4) :
-            buff = struct.unpack('<f', data[150+i*4:154+i*4])
-            timedata[i] = np.asarray(buff)
-        print(data[150:154])
-        print("accel_x" ,accel_x)
-        print("accel_y", accel_y)
-        print("accel_z", accel_z)
-        print("gyro_x" ,gyro_x)
-        print("gyro_y", gyro_y)
-        print("gyro_z", gyro_z)
-        print("mag1_x" ,mag1_x)
-        print("mag1_y", mag1_y)
-        print("mag1_z", mag1_z)
-        print("mag2_x" ,mag2_x)
-        print("mag2_y", mag2_y)
-        print("mag2_z", mag2_z)
-        print("timedata", timedata)
-
-
 def receive(mark,serial_port):
 
     # Wait a second to let the port initialize
@@ -139,43 +59,44 @@ def receive(mark,serial_port):
 
             if syncVal == UAVTALK_SYNC_VAL :
                 crc8 = PIOS_CRC_updateByte(0, syncVal)
-                dataType = int.from_bytes(serial_port.read(),'little')  # 获取type
-                #print(dataType)
+                dataType = int.from_bytes(serial_port.read(), 'little')  # 获取type
+                #print("dataType=", dataType)
                 if dataType == UAVTALK_TYPE_VER:
                     crc8 = PIOS_CRC_updateByte(crc8, dataType)
-                    dataLen = int.from_bytes(serial_port.read(2),'little')   # 获取size
+                    dataLen = int.from_bytes(serial_port.read(2), 'little')   # 获取size
                     print("dataLen=", dataLen)
-                    _dataLen = ctypes.c_short(dataLen)
-                    high_8 = (_dataLen.value & 0xff00) >> 8
-                    crc8 = PIOS_CRC_updateByte(crc8, high_8)
-                    low_8 = (_dataLen.value & 0x00ff)
-                    crc8 = PIOS_CRC_updateByte(crc8, low_8)
-                    readLen = dataLen + 4 + 2 + 1
+                    
+                    readLen = dataLen - 4 
                     dataBuff = serial_port.read(readLen)
-                    objId = int.from_bytes(dataBuff[0:4], 'little')  # 获取objId
+                    objId = int.from_bytes(dataBuff[0: 4], 'little')  # 获取objId
+                    print("objId=", objId)
 
-                    if len(dataBuff) > 0 and objId == UAV_OBJ_SENSOR:
-                        crc8 = crc8Calculate(crc8, dataBuff)
-                        crc8Val = dataBuff[-1]
-                        decData = binascii.b2a_hex(dataBuff).decode('utf-8')
-                        print(decData)
-                        print(decData[-10:-8])
-                        print("declen", len(decData[:-12]))
-                        print("declen",len(decData[:-12]))
-                        print(int.from_bytes(dataBuff[-2:-6], 'little'))
-                        print("crc8",crc8)
-                        print("crc8Val", crc8Val)
 
-                        sensorUnpack(dataBuff)
+                    if objId == UAV_OBJ_ADC:
+                        #sensorUnpack(dataBuff)
+                        instADCId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取ADC instId
+                        print("instADCId={:x}".format(instADCId))
 
+                        # for i in range(6, readLen, 2):
+                        #     print("dataBuff=", dataBuff[i: i + 2])
+                        #     x = int.from_bytes(dataBuff[i: i + 2], 'little')
+                        #     print("x=", x)
+                    
+                    elif objId == UAV_OBJ_ACC:
+                        instAccId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取Acc instId                        
+                        print("instAccId=", instAccId)
+
+                    elif objId == UAV_OBJ_GYRO:
+                        instGyroId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取Gyro instId                        
+                        print("instGyroId=", instGyroId)
 
 
 if __name__ == '__main__':
-    serial_port = serial.Serial('COM5', 230400, timeout=0.5)
+    serial_port = serial.Serial('COM5', 921600, timeout=0.5)
 
-    if serial_port.isOpen() :
+    if serial_port.isOpen():
         print("open success")
-    else :
+    else:
         print("open failed")
 
     # Wait a second to let the port initialize
