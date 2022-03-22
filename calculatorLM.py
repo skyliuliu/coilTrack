@@ -52,6 +52,37 @@ class Tracker:
         self.coils = CoilArray(np.array(currents))
         self.m = self.coils.coilNum
 
+    def h(self, state):
+        '''
+        观测函数
+        :return: 【np.array】观测值
+        '''
+        dArray0 = state[:3] - self.coils.coilArray
+        em2 = q2R(state[3: 7])[2]
+
+        E = np.zeros(self.coils.coilNum)
+        for i, d in enumerate(dArray0):
+            E[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+        return E
+
+    def hh(self, state):
+        """
+        线圈+IMU的观测方程
+        :param state: 预估的状态量 (n, )
+        :return: E 感应电压 [1e-6V] (m, )
+        """
+        dArray0 = state[:3] - self.coils.coilArray
+        em2 = q2R(state[3: 7])[:, -1]
+
+        EA = np.zeros(self.coils.coilNum + 3)
+        for i, d in enumerate(dArray0):
+            EA[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+
+        EA[-3] = -1000 * em2[-3]  # x反向
+        EA[-2] = -1000 * em2[-2]  # y反向
+        EA[-1] = 1000 * em2[-1]   # z正向
+        return EA
+
     def derive(self, param_index):
         """
         指定状态量的偏导数
@@ -62,13 +93,13 @@ class Tracker:
         state1 = self.state.copy()
         state2 = self.state.copy()
         if param_index < 3:
-            delta = 0.0003
+            delta = 0.03
         else:
-            delta = 0.001
+            delta = 0.1
         state1[param_index] += delta
         state2[param_index] -= delta
-        data_est_output1 = self.coils.h(state1)
-        data_est_output2 = self.coils.h(state2)
+        data_est_output1 = self.h(state1)
+        data_est_output2 = self.h(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
@@ -88,7 +119,7 @@ class Tracker:
         :param output_data: 观测量 (m, )
         :return: residual (m, )
         """
-        data_est_output = self.coils.h(state)
+        data_est_output = self.h(state)
         residual = output_data - data_est_output
         return residual
 
@@ -107,8 +138,8 @@ class Tracker:
         J = self.jacobian()
         A = J.T.dot(J)
         g = J.T.dot(res)
-        u = get_init_u(A, tao)  # set the init u
-        # u = 100
+        # u = get_init_u(A, tao)  # set the init u
+        u = 1000
         v = 2
         rou = 0
         mse = 0
@@ -175,7 +206,7 @@ class Tracker:
             return
          
         pos = np.round(self.state[:3], 3)
-        em = np.round(q2R(self.state[3: 7])[:, -1], 3)
+        em = np.round(q2R(self.state[3: 7])[2], 3)
         euler = q2Euler(self.state[3: 7])
         print(printStr)
         print('i={}, pos={}mm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
@@ -188,34 +219,37 @@ class Tracker:
         :param states: 真实值
         :return:
         '''
-        posTruth, emTruth = states[0][:3], q2R(states[0][3: 7])[:, -1]
+        posTruth, emTruth = states[:3], q2R(states[3: 7])[2]
         err_pos = np.linalg.norm(state[:3] - posTruth) / np.linalg.norm(posTruth)
-        err_em = np.linalg.norm(q2R(state[3: 7]) - emTruth)  # 方向矢量本身是归一化的
+        err_em = np.linalg.norm(q2R(state[3: 7])[2] - emTruth)  # 方向矢量本身是归一化的
         print('pos={}: err_pos={:.0%}, err_em={:.0%}'.format(np.round(posTruth, 3), err_pos, err_em))
 
         return (err_pos, err_em)
 
-    def generate_data(self, state, std):
+    def generate_data(self, state, std, sensor_err):
         """
         生成模拟数据
         :param num_data: 【int】数据维度
         :param state: 【np.array】真实状态值 (7, )
         :param std: 【float】传感器的噪声标准差
+        :param sensor_err: 【float】sensor的噪声误差百分比[100%]
         :return: 模拟值, (num_data, )
         """
-        Emid = self.coils.hh(state)  # 模拟数据的中间值
+        Emid = self.h(state)  # 模拟数据的中间值
         Esim = np.zeros(self.m)
 
         for j in range(self.m):
             Esim[j] = np.random.normal(Emid[j], std, 1)
+            #Esim[j] = Emid[j] * (1 + sensor_err * (-1) ** j)
         return Esim
 
-    def sim(self, states, state0, sensor_std, plotType, plotBool):
+    def sim(self, states, state0, sensor_std, sensor_err, plotType, plotBool):
         '''
         使用模拟的观测值验证算法的准确性
         :param states: 真实状态
         :param state0: 初始值
         :param sensor_std: sensor的噪声标准差[mG]
+        :param sensor_err: 【float】sensor的噪声误差百分比[100%]
         :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
         :param plotBool: 【bool】是否绘图
         :param printBool: 【bool】是否打印输出
@@ -224,7 +258,7 @@ class Tracker:
         '''
         for i in range(1):
             # run
-            output_data = self.generate_data(states[0][:7], sensor_std)
+            output_data = self.generate_data(states[:7], sensor_std, sensor_err)
             self.LM(state0, output_data)
 
             if plotBool:
@@ -284,7 +318,7 @@ class Tracker:
 
     def funScipy(self, state, coilIndex, Emea):
         d = state[:3] - self.coils.coilArray[coilIndex, :]
-        em2 = q2R(state[3: 7])[:, -1]
+        em2 = q2R(state[3: 7])[2]
         #print('pos={}, em={}'.format(state[:3], em2))
     
         Eest = np.zeros(self.m)
@@ -424,10 +458,12 @@ def run():
         time.sleep(0.05)
 
 if __name__ == '__main__':
-    state0 = np.array([0, 0, 0.2, 1, 0, 0, 0, 0, 0])  # 初始值
-    states = [np.array([0, 0, 0.215 - 0.0075, 1, 0, 0, 0])]  # 真实值
+    np.set_printoptions(suppress=True)
+    state0 = np.array([0, 0, 100, 1, 0, 0, 0, 0, 0], dtype=float)  # 初始值
+    states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262 ], dtype=float)  # 真实值
 
-    #err = tracker.sim(states, state0, sensor_std=10, plotBool=False, plotType=(1, 2))
+    tracker = Tracker(states, currents=[2] * 16)
+    err = tracker.sim(states, state0, sensor_std=5, sensor_err=0.01, plotBool=False, plotType=(1, 2))
     # print('---------------------------------------------------\n')
     # state0S = np.array([0, 0, 0.3, 0, 0, 0, 1])   # 初始值
     # tracker.simScipy(states, state0S, sensor_std=10)
@@ -439,4 +475,4 @@ if __name__ == '__main__':
 
     # tracker.measureDataPredictorScipy(state0, states)
 
-    run()
+    #run()

@@ -137,11 +137,12 @@ class Tracker:
             self.pos, self.m, max(abs(Estate)), min(abs(Estate)), nees, timeCost))
 
 
-def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=50):
+def sim(sensor_std, sensor_err, plotType, state0, plotBool, printBool, state=None, maxIter=50):
     """
     使用模拟的观测值验证算法的准确性
     :param state: 【list】模拟的真实状态，可以有多个不同的状态
     :param sensor_std: 【float】sensor的噪声标准差[mG]
+    :param sensor_err: 【float】sensor的噪声误差百分比[100%]
     :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
     :param plotBool: 【bool】是否绘图
     :param printBool: 【bool】是否打印输出
@@ -176,7 +177,8 @@ def sim(sensor_std, plotType, state0, plotBool, printBool, state=None, maxIter=5
 
         simData = {}
         for j in range(mp.coils.coilNum):
-            Esim[j, :] = np.random.normal(E[j], std, maxIter)
+            #Esim[j, :] = np.random.normal(E[j], std, maxIter)
+            Esim[j, :] = E[j] * (1 + sensor_err * (-1) ** j)
             # plt.hist(Esim[j, :], bins=25, histtype='bar', rwidth=2)
             # plt.show()
             for k in range(maxIter):
@@ -344,16 +346,16 @@ def trajectoryLine(shape, pointsNum):
     :return: 【np.array】线上点的坐标集合 (pointsNum, 3)
     '''
     if shape == "straight":
-        line = [[x, 0, 0.3] for x in np.linspace(-0.1, 0.1, pointsNum)]
+        line = [[x, 0, 300] for x in np.linspace(-100, 100, pointsNum)]
     elif shape == "sin":
-        line_x = np.linspace(-0.1, 0.1, pointsNum)
+        line_x = np.linspace(-100, 100, pointsNum)
         line_y = np.sin(line_x * pointsNum * np.pi * 0.5) * 0.1
-        line = [[x, y, 0.3] for (x, y) in zip(line_x, line_y)]
+        line = [[x, y, 300] for (x, y) in zip(line_x, line_y)]
     elif shape == "circle":
         line0 = np.linspace(0, 2 * np.pi, pointsNum)
-        line_x = np.sin(line0) * 0.1 + 0.1
-        line_y = np.cos(line0) * 0.1
-        line = [[x, y, 0.3] for (x, y) in zip(line_x, line_y)]
+        line_x = np.sin(line0) * 100 + 100
+        line_y = np.cos(line0) * 100
+        line = [[x, y, 300] for (x, y) in zip(line_x, line_y)]
     else:
         raise TypeError("shape is not right!!!")
     return line
@@ -382,11 +384,12 @@ def generateEsim(state, sensor_std, maxNum=50):
 
 if __name__ == '__main__':
     state0 = np.array([0, 0, 0.3, 1, 0, 0, 0])
-    state = np.array([-0.025, -0.025, 0.246, 0.5 * np.sqrt(3), 0.5, 0, 0])
+    #state = np.array([-0.025, -0.025, 0.246, 0.5 * np.sqrt(3), 0.5, 0, 0])
+    state = np.array([-0.025, -0.025, 0.246, 1, 0, 0, 0])
 
     # state0 = np.array([0, 0, 0, 0, 0.3, 0, 1, 0, 0, 0])   # x,vx, y, vz, z, vz, q0, q1, q2, q3
     # state = np.array([0.16, 0.5, 0.2, 0, 0.3, 0, 1, 0, 0, 0])
-    sim(sensor_std=5, state0=state0, state=state, plotBool=False, printBool=True, plotType=(1, 2))
+    sim(sensor_std=5, sensor_err = 0.01, state0=state0, state=state, plotBool=False, printBool=True, plotType=(1, 2))
 
     # simErrDistributed(contourBar=np.linspace(0, 0.5, 9), sensor_std=25, pos_or_ori=0)
 
