@@ -43,7 +43,7 @@ def get_init_u(A, tao):
 
 class Tracker:
     maxIter = 50        # 最大迭代次数
-    printBool = True    # 是否打印结果
+    printBool = False    # 是否打印结果
 
     def __init__(self, state, currents):
         self.state = state[:7]
@@ -168,15 +168,16 @@ class Tracker:
         :param mse: 【float】残差
         :return:
         '''
-        if not self.printBool:
-            return
-        print(printStr)
         timeCost = (datetime.datetime.now() - t0).total_seconds()
         state2[:] = np.concatenate((self.state, np.array([timeCost, i])))  # 输出的结果
+
+        if not self.printBool:
+            return
+         
         pos = np.round(self.state[:3], 3)
         em = np.round(q2R(self.state[3: 7])[:, -1], 3)
         euler = q2Euler(self.state[3: 7])
-
+        print(printStr)
         print('i={}, pos={}mm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
         .format(i, pos, euler[0], euler[1], euler[2],  timeCost, np.round(em, 3), mse))
 
@@ -392,7 +393,8 @@ def run():
     time.sleep(0.5)
     
     # 读取发射端的电流，然后创建定位器对象
-    currents = runsend(open=True)
+    currents = [2.11, 2.15, 2.19, 2.28, 2.23, 2.21, 2.16, 2.28, 2.16, 2.3, 2.26, 2.26, 2.26, 2.36, 2.35, 2.24]
+    runsend(open=True)
     tracker = Tracker(state0, currents)
 
     # 描绘3D轨迹

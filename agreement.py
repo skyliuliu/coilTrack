@@ -69,13 +69,13 @@ def receive(mark,serial_port):
                     readLen = dataLen - 4 
                     dataBuff = serial_port.read(readLen)
                     objId = int.from_bytes(dataBuff[0: 4], 'little')  # 获取objId
-                    print("objId=", objId)
+                    print("objId=0x{:x}".format(objId))
 
 
                     if objId == UAV_OBJ_ADC:
-                        #sensorUnpack(dataBuff)
+                        
                         instADCId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取ADC instId
-                        print("instADCId={:x}".format(instADCId))
+                        print("instADCId={}".format(instADCId))
 
                         # for i in range(6, readLen, 2):
                         #     print("dataBuff=", dataBuff[i: i + 2])
@@ -83,12 +83,12 @@ def receive(mark,serial_port):
                         #     print("x=", x)
                     
                     elif objId == UAV_OBJ_ACC:
-                        instAccId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取Acc instId                        
-                        print("instAccId=", instAccId)
+                        acc = struct.unpack('f'*3, dataBuff[6: 18])
+                        print("acc=", acc)
 
                     elif objId == UAV_OBJ_GYRO:
-                        instGyroId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取Gyro instId                        
-                        print("instGyroId=", instGyroId)
+                        gyro = struct.unpack('f'*3, dataBuff[6: 18])
+                        print("gyro=", gyro)
 
 
 if __name__ == '__main__':
