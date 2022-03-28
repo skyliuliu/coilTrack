@@ -1,0 +1,9 @@
+filterpy==1.4.5
+matplotlib==3.5.1
+numpy==1.22.3
+pandas==1.4.1
+PyOpenGL==3.1.6
+PyQt5==5.15.6
+pyqtgraph==0.12.4
+pyserial==3.5
+scipy==1.8.0
