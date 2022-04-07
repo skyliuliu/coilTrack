@@ -50,7 +50,8 @@ class Tracker:
         self.n = len(self.state)
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
-        self.m = self.coils.coilNum
+        self.m = self.coils.coilNum + 3
+        self.t0 = time.time()
 
     def h(self, state):
         '''
@@ -98,8 +99,8 @@ class Tracker:
             delta = 0.1
         state1[param_index] += delta
         state2[param_index] -= delta
-        data_est_output1 = self.h(state1)
-        data_est_output2 = self.h(state2)
+        data_est_output1 = self.hh(state1)
+        data_est_output2 = self.hh(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
@@ -119,7 +120,7 @@ class Tracker:
         :param output_data: 观测量 (m, )
         :return: residual (m, )
         """
-        data_est_output = self.h(state)
+        data_est_output = self.hh(state)
         residual = output_data - data_est_output
         return residual
 
@@ -133,7 +134,7 @@ class Tracker:
         """
         output_data = np.array(output_data)
         self.state = np.array(state2)[:7]
-        t0 = datetime.datetime.now()
+        t0 = time.time()
         res = self.residual(self.state, output_data)
         J = self.jacobian()
         A = J.T.dot(J)
@@ -193,14 +194,16 @@ class Tracker:
         '''
         输出算法的中间结果
         :param state:【np.array】 位置和姿态:x, y, z, q0, q1, q2, q3 (7,)
-        :param state2: 【np.array】位置、姿态、磁矩、单步耗时和迭代步数 (10,)
+        :param state2: 【np.array】位置、姿态、磁矩、计算耗时、总耗时和迭代步数 (10,)
         :param t0: 【float】 时间戳
         :param i: 【int】迭代步数
         :param mse: 【float】残差
         :return:
         '''
-        timeCost = (datetime.datetime.now() - t0).total_seconds()
-        state2[:] = np.concatenate((self.state, np.array([timeCost, i])))  # 输出的结果
+        compTime = time.time() - t0
+        totalTime = time.time() - self.t0
+        self.t0 = time.time()
+        state2[:] = np.concatenate((self.state, np.array([compTime, totalTime, i])))  # 输出的结果
 
         if not self.printBool:
             return
@@ -209,8 +212,8 @@ class Tracker:
         em = np.round(q2R(self.state[3: 7])[2], 3)
         euler = q2Euler(self.state[3: 7])
         print(printStr)
-        print('i={}, pos={}mm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, timeCost={:.3f}s, em={}, mse={:.3e}'
-        .format(i, pos, euler[0], euler[1], euler[2],  timeCost, np.round(em, 3), mse))
+        print('i={}, pos={}mm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, compTime={:.3f}s, em={}, mse={:.3e}'
+        .format(i, pos, euler[0], euler[1], euler[2],  compTime, np.round(em, 3), mse))
 
     def compErro(self, state, states):
         '''
@@ -235,7 +238,7 @@ class Tracker:
         :param sensor_err: 【float】sensor的噪声误差百分比[100%]
         :return: 模拟值, (num_data, )
         """
-        Emid = self.h(state)  # 模拟数据的中间值
+        Emid = self.hh(state)  # 模拟数据的中间值
         Esim = np.zeros(self.m)
 
         for j in range(self.m):
@@ -418,7 +421,7 @@ def run():
     '''
     qADC, qGyro, qAcc = Queue(), Queue(), Queue()
     z = []
-    state0 = multiprocessing.Array('f', [0, 0, 200, 1, 0, 0, 0, 0, 0])
+    state0 = multiprocessing.Array('f', [0, 0, 200, 1, 0, 0, 0, 0, 0, 0])
 
     # 读取接收端数据
     procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
@@ -427,8 +430,8 @@ def run():
     time.sleep(0.5)
     
     # 读取发射端的电流，然后创建定位器对象
-    currents = [2.11, 2.15, 2.19, 2.28, 2.23, 2.21, 2.16, 2.28, 2.16, 2.3, 2.26, 2.26, 2.26, 2.36, 2.35, 2.24]
-    runsend(open=True)
+    currents = [2.15, 2.18, 2.25, 2.36, 2.28, 2.25, 2.25, 2.33, 2.22, 2.35, 2.32, 2.3, 2.3, 2.38, 2.39, 2.27]
+    #runsend(open=True)
     tracker = Tracker(state0, currents)
 
     # 描绘3D轨迹
@@ -441,20 +444,18 @@ def run():
             qGyro.get()
         if not qAcc.empty():
             accData = qAcc.get()
-        else:
-            accData = None
-
+       
         if not qADC.empty():
             adcV = qADC.get()
             vm = findPeakValley(adcV, 0, 4e-6) * 0.5
             if vm:
                 z.append(vm * 1e6)
         if len(z) == 16:
-            # if accData:
-            #     for i in range(3):
-            #         z.append(accData[i])
-            tracker.LM(state0, z)
-            z.clear()
+            if accData:
+                for i in range(3):
+                    z.append(accData[i])
+                tracker.LM(state0, z)
+                z.clear()
         time.sleep(0.05)
 
 if __name__ == '__main__':
@@ -462,8 +463,8 @@ if __name__ == '__main__':
     state0 = np.array([0, 0, 100, 1, 0, 0, 0, 0, 0], dtype=float)  # 初始值
     states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262 ], dtype=float)  # 真实值
 
-    tracker = Tracker(states, currents=[2] * 16)
-    err = tracker.sim(states, state0, sensor_std=5, sensor_err=0.01, plotBool=False, plotType=(1, 2))
+    #tracker = Tracker(states, currents=[2] * 16)
+    #err = tracker.sim(states, state0, sensor_std=5, sensor_err=0.01, plotBool=False, plotType=(1, 2))
     # print('---------------------------------------------------\n')
     # state0S = np.array([0, 0, 0.3, 0, 0, 0, 1])   # 初始值
     # tracker.simScipy(states, state0S, sensor_std=10)
@@ -475,4 +476,4 @@ if __name__ == '__main__':
 
     # tracker.measureDataPredictorScipy(state0, states)
 
-    #run()
+    run()

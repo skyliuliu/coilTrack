@@ -400,32 +400,32 @@ def track3D(state):
     # w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
     # .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
     #w.show()
-    # add Position
 
-    posDock = Dock("\nPosition\n", size=(160, 10))
+    # add Position
+    posDock = Dock("\n坐标/cm\n", size=(160, 10))
     posText = QtGui.QLabel()
-    posText.setText(' ' + ' '.join(str(i) for i in pos0) + " (cm)")
+    posText.setText(" x={} \u00b1 {}\n\n y={} \u00b1 {}\n z={} \u00b1 {}".format(pos0[0, 0], 0, pos0[0, 1], 0, pos0[0, 2], 0))
     posDock.addWidget(posText)
     area.addDock(posDock, 'right')
 
     # add euler angles
-    eulerDock = Dock("\nEuler angles\n", size=(160, 10))
+    eulerDock = Dock("\n姿态角/\u00b0\n", size=(160, 10))
     eulerText = QtGui.QLabel()
-    eulerText.setText(' ' + ', '.join(str(a) for a in [0, 0, 0]) + "(degree)")
+    eulerText.setText("pitch={:.0f} \u00b1 {}\n\n roll={:.0f} \u00b1 {}\n yaw={:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0, euler[2], 0))
     eulerDock.addWidget(eulerText)
     area.addDock(eulerDock, 'bottom', posDock)
 
     # add time cost
-    timeDock = Dock("\nTime cost\n", size=(160, 10))
+    timeDock = Dock("\n耗时/s\n", size=(160, 10))
     timeText = QtGui.QLabel()
-    timeText.setText("time cost = 0 s")
+    timeText.setText("total time: 0\ncompute time: 0")
     timeDock.addWidget(timeText)
     area.addDock(timeDock, 'bottom', eulerDock)
 
     # add iter times
-    iterDock = Dock("\niter times\n", size=(160, 10))
+    iterDock = Dock("\n迭代次数\n", size=(160, 10))
     iterText = QtGui.QLabel()
-    iterText.setText("iter = 0")
+    iterText.setText("iter: 0")
     iterDock.addWidget(iterText)
     area.addDock(iterDock, 'bottom', timeDock)
 
@@ -433,19 +433,32 @@ def track3D(state):
 
     i = 1
     pts = pos.reshape(1, 3)
+    eulers = euler.reshape(1, 3)
 
     def update():
         '''update position and orientation'''
-        nonlocal i, pts, state
+        nonlocal i, pts, state, eulers
         pos, q = np.array(state[:3]) * 0.1, state[3:7]
         uAxis, angle = q2ua(q)
         euler = q2Euler(state[3: 7])
-        pt = (pos).reshape(1, 3)
+        pt = pos.reshape(1, 3)
+        et = euler.reshape(1, 3)
         if pts.size < 150:
             pts = np.concatenate((pts, pt))
+            eulers = np.concatenate((eulers, et))
         else:
             pts = np.concatenate((pts[-50:, :], pt))
+            eulers = np.concatenate((eulers[-50:, :], et))
         plt.setData(pos=pts)
+
+        stdPosX = pts[:, 0].std()
+        stdPosY = pts[:, 1].std()
+        stdPosz = pts[:, 2].std()
+        stdPitch = eulers[:, 0].std()
+        stdRoll = eulers[:, 1].std()
+        stdYaw = eulers[:, 2].std()
+
+        # update gui
         ArrowMesh.resetTransform()
         sphereMesh.resetTransform()
         ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
@@ -453,10 +466,10 @@ def track3D(state):
         sphereMesh.translate(*pos)
         
         # update state
-        posText.setText(" {}cm".format(np.round(pos, 2)))
-        eulerText.setText(" {}degree".format(np.round(euler, 0)))
-        timeText.setText(' ' + "time cost = {:.0f}ms".format(state[-2] * 1000))
-        iterText.setText(' ' + "iter times = " + str(int(state[-1])))
+        posText.setText(" x={:.2f} \u00b1 {:.2f}\n\n y={:.2f} \u00b1 {:.2f}\n\n z={:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosz))
+        eulerText.setText(" pitch={:.0f} \u00b1 {:.0f}\n\n roll={:.0f} \u00b1 {:.0f}\n\n yaw={:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll, euler[2], stdYaw))
+        timeText.setText(" total time = {:.3f}s\n compute time = {:.3f}s".format(state[-2], state[-3]))
+        iterText.setText(" iter times = " + str(int(state[-1])))
         i += 1
 
     timer = QtCore.QTimer()

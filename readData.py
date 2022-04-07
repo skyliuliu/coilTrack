@@ -29,7 +29,7 @@ def runsend(open=True):
     cmd = "EB 90 01 32 05 01 90 00 00 00 AA 55" if open else "EB 90 00 32 05 01 90 00 00 00 AA 55"
     cmdList = cmd.split(' ')
     cmd2 = b''.join([binascii.a2b_hex(s) for s in cmdList])
-    ser.write(cmd2)
+    #ser.write(cmd2)
 
     data = ser.readline()
     '''
@@ -145,13 +145,14 @@ def readRecData(q1, q2, q3):
     UAV_OBJ_GYRO = 0xADC3A85C
 
     port = "COM5"
-    ser = serial.Serial(port, 921600, timeout=0.5)
+    ser = serial.Serial(port, 460800, timeout=0.5)
     if ser.isOpen():
         print("open {} success!\n".format(port))
     else:
         raise RuntimeError("open failed")
 
     adcVlist = []
+    coilIndex = 0
     
     while True:
         head = ser.read()
@@ -160,35 +161,46 @@ def readRecData(q1, q2, q3):
             headVal = int.from_bytes(head,'little')   # 获取head
 
             if headVal == UAVTALK_SYNC_VAL :
-                crc8_head = PIOS_CRC_updateByte(0, headVal)
+                #crc8_head = PIOS_CRC_updateByte(0, headVal)
                 typeh = ser.read()
                 dataType = int.from_bytes(typeh, 'little')  # 获取type
                 
                 if dataType == UAVTALK_TYPE_VER:
                     size = ser.read(2)
                     dataLen = int.from_bytes(size, 'little')   # 获取size
+                    #print("dataLen=", dataLen)
                     readLen = dataLen - 4 
 
                     dataBuff = ser.read(readLen)   # 读取objId+instid+data
                     
-                    crc8 = crc8Calculate(crc8_head, typeh + size + dataBuff)  # crc8校验算法
-                    crc = ser.read()    # 读取crc校验码
-                    if not crc8 == crc[0]:
-                        print("crc is not right!")
+                    # crc8 = crc8Calculate(crc8_head, typeh + size + dataBuff)  # crc8校验算法
+                    # crc = ser.read()    # 读取crc校验码
+                    # if not crc8 == crc[0]:
+                    #     print("crc is not right!")
 
                     objId = int.from_bytes(dataBuff[0: 4], 'little')  # 获取objId
+                    #print("objId=", objId)
 
                     if objId == UAV_OBJ_ADC:
                         instADCId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取ADC instId
+                        #print("instADCId=", instADCId)      
+
+                        if instADCId == 0 and adcVlist:
+                            coilIndex += 1
+                            q1.put(adcVlist.copy())
+                            #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))
+                            adcVlist.clear()        
 
                         for i in range(6, readLen, 2):
                             adcV = int.from_bytes(dataBuff[i: i + 2], 'little') * 1e-6
                             adcVlist.append(adcV)
+
                         if instADCId == 7:
+                            coilIndex += 1
                             q1.put(adcVlist.copy())
-                            #print("t={:.3f}, adc_num={}".format(time.time(), len(adcVlist)))
-                            adcVlist.clear()
-                            
+                            #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))
+                            adcVlist.clear() 
+                               
                     elif objId == UAV_OBJ_GYRO:
                         gyro = struct.unpack('f'*3, dataBuff[6: 18])
                         q2.put(gyro)    
@@ -276,13 +288,13 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
         if not qADC.empty():
             adcV = qADC.get()
             adcVmean = np.array(adcV).mean()
-            vpp = findPeakValley(adcV, 0, 6e-6)
+            vpp = findPeakValley(adcV, adcVmean, 6e-6)
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
                 yMea.put(vpp * 1e6)
                 ySim.put(VppSim[iVS % 16 - 1])
-                print('iVS={}, vpp={:.2f}uV'.format(iVS, vpp * 1e6))
+                print('iVS={}, vpp={:.2f}uV'.format(iVS % 16, vpp * 1e6))
 
             n = len(adcV)
             for v in adcV:
@@ -373,6 +385,7 @@ def findPeakValley(data, E0, noiseStd):
     '''
     dataSize = len(data)
     E0 = np.array(data).mean()
+    #print("dataSize={}, E0={:.2f}".format(dataSize, E0))
     # startIndex = data._stat_axis._start
     # 找出满足条件1的峰和谷
     peaks, valleys = [], []
@@ -408,8 +421,8 @@ def runRec():
 
     #currents = runsend(open=True)
     currents = [2.21, 2.22, 2.31, 2.39, 2.33, 2.31, 2.29, 2.34, 2.29, 2.38, 2.36, 2.31, 2.35, 2.41, 2.42, 2.35]
-    plotRecData(q1, q2, q3, currents=currents)
+    plotRecData(q1, q2, q3, currents=currents, file=None)
 
 
 if __name__ == "__main__":
-    runsend()
+    runRec()
