@@ -187,8 +187,8 @@ def plotErr(x, y, z, contourBar, titleName):
     :return:
     '''
     plt.title(titleName)
-    plt.xlabel('x/m')
-    plt.ylabel('y/m')
+    plt.xlabel('x/mm')
+    plt.ylabel('y/mm')
     plt.tick_params(labelsize=10)
     plt_contourf = plt.contourf(x, y, z, contourBar, cmap='jet', extend='both')    # 填充等高线内区域
     cmap = copy.copy(plt_contourf.get_cmap())
@@ -211,8 +211,8 @@ def plotTrajectory(stateLine, stateMP, sensor_std):
     plt.title('sensor_std={}'.format(sensor_std))
     plt.axis('equal')  # 坐标轴按照等比例绘图
     plt.gca().grid(b=True)
-    plt.xlabel('x/m')
-    plt.ylabel('y/m')
+    plt.xlabel('x/mm')
+    plt.ylabel('y/mm')
     plt.plot(stateLine[:, 0], stateLine[:, 1],'r')
     plt.plot(stateMP[:, 0], stateMP[:, 1], 'b--')
     plt.show()
