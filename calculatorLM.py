@@ -1,4 +1,3 @@
-import datetime
 import time
 from queue import Queue
 import multiprocessing
@@ -59,11 +58,11 @@ class Tracker:
         :return: 【np.array】观测值
         '''
         dArray0 = state[:3] - self.coils.coilArray
-        em2 = q2R(state[3: 7])[2]
+        em2 = q2R(state[3: 7])[:3, 2]
 
         E = np.zeros(self.coils.coilNum)
         for i, d in enumerate(dArray0):
-            E[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+            E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
         return E
 
     def hh(self, state):
@@ -73,11 +72,11 @@ class Tracker:
         :return: E 感应电压 [1e-6V] (m, )
         """
         dArray0 = state[:3] - self.coils.coilArray
-        em2 = q2R(state[3: 7])[:, -1]
+        em2 = q2R(state[3: 7])[:3, 2]
 
         EA = np.zeros(self.coils.coilNum + 3)
         for i, d in enumerate(dArray0):
-            EA[i] = self.coils.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+            EA[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
 
         EA[-3] = -1000 * em2[-3]  # x反向
         EA[-2] = -1000 * em2[-2]  # y反向
@@ -186,8 +185,7 @@ class Tracker:
                     us.append(u)
                     residual_memory.append(mse)
             if i == self.maxIter:
-                print('maxIter_step')
-                self.stateOut(state2, t0, i, mse, ' ')
+                self.stateOut(state2, t0, i, mse, 'maxIter_step')
                 return self.state
 
     def stateOut(self, state2, t0, i, mse, printStr):
@@ -209,7 +207,7 @@ class Tracker:
             return
          
         pos = np.round(self.state[:3], 3)
-        em = np.round(q2R(self.state[3: 7])[2], 3)
+        em = np.round(q2R(self.state[3: 7])[:3, 2], 3)
         euler = q2Euler(self.state[3: 7])
         print(printStr)
         print('i={}, pos={}mm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0, compTime={:.3f}s, em={}, mse={:.3e}'
@@ -222,9 +220,9 @@ class Tracker:
         :param states: 真实值
         :return:
         '''
-        posTruth, emTruth = states[:3], q2R(states[3: 7])[2]
+        posTruth, emTruth = states[:3], q2R(states[3: 7])[:3, 2]
         err_pos = np.linalg.norm(state[:3] - posTruth) / np.linalg.norm(posTruth)
-        err_em = np.linalg.norm(q2R(state[3: 7])[2] - emTruth)  # 方向矢量本身是归一化的
+        err_em = np.linalg.norm(q2R(state[3: 7])[:3, 2] - emTruth)  # 方向矢量本身是归一化的
         print('pos={}: err_pos={:.0%}, err_em={:.0%}'.format(np.round(posTruth, 3), err_pos, err_em))
 
         return (err_pos, err_em)
@@ -321,8 +319,7 @@ class Tracker:
 
     def funScipy(self, state, coilIndex, Emea):
         d = state[:3] - self.coils.coilArray[coilIndex, :]
-        em2 = q2R(state[3: 7])[2]
-        #print('pos={}, em={}'.format(state[:3], em2))
+        em2 = q2R(state[3: 7])[:3, 2]
     
         Eest = np.zeros(self.m)
         for i in range(self.m):

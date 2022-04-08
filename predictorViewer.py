@@ -404,14 +404,14 @@ def track3D(state):
     # add Position
     posDock = Dock("\n坐标/cm\n", size=(160, 10))
     posText = QtGui.QLabel()
-    posText.setText(" x={} \u00b1 {}\n\n y={} \u00b1 {}\n z={} \u00b1 {}".format(pos0[0, 0], 0, pos0[0, 1], 0, pos0[0, 2], 0))
+    posText.setText(" x = {} \u00b1 {}\n\n y = {} \u00b1 {}\n z = {} \u00b1 {}".format(pos0[0, 0], 0, pos0[0, 1], 0, pos0[0, 2], 0))
     posDock.addWidget(posText)
     area.addDock(posDock, 'right')
 
     # add euler angles
     eulerDock = Dock("\n姿态角/\u00b0\n", size=(160, 10))
     eulerText = QtGui.QLabel()
-    eulerText.setText("pitch={:.0f} \u00b1 {}\n\n roll={:.0f} \u00b1 {}\n yaw={:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0, euler[2], 0))
+    eulerText.setText("pitch = {:.0f} \u00b1 {}\n\n roll = {:.0f} \u00b1 {}\n yaw = {:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0, euler[2], 0))
     eulerDock.addWidget(eulerText)
     area.addDock(eulerDock, 'bottom', posDock)
 
@@ -436,11 +436,12 @@ def track3D(state):
     eulers = euler.reshape(1, 3)
 
     def update():
-        '''update position and orientation'''
         nonlocal i, pts, state, eulers
+
+        # update position and orientation
         pos, q = np.array(state[:3]) * 0.1, state[3:7]
         uAxis, angle = q2ua(q)
-        euler = q2Euler(state[3: 7])
+        euler = q2Euler(q)
         pt = pos.reshape(1, 3)
         et = euler.reshape(1, 3)
         if pts.size < 150:
@@ -466,8 +467,8 @@ def track3D(state):
         sphereMesh.translate(*pos)
         
         # update state
-        posText.setText(" x={:.2f} \u00b1 {:.2f}\n\n y={:.2f} \u00b1 {:.2f}\n\n z={:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosz))
-        eulerText.setText(" pitch={:.0f} \u00b1 {:.0f}\n\n roll={:.0f} \u00b1 {:.0f}\n\n yaw={:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll, euler[2], stdYaw))
+        posText.setText(" x = {:.2f} \u00b1 {:.2f}\n\n y = {:.2f} \u00b1 {:.2f}\n\n z = {:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosz))
+        eulerText.setText(" pitch = {:.0f} \u00b1 {:.0f}\n\n roll = {:.0f} \u00b1 {:.0f}\n\n yaw = {:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll, euler[2], stdYaw))
         timeText.setText(" total time = {:.3f}s\n compute time = {:.3f}s".format(state[-2], state[-3]))
         iterText.setText(" iter times = " + str(int(state[-1])))
         i += 1

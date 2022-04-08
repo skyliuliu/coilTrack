@@ -514,7 +514,7 @@ class se3(Algebra):
         :return:  this algebra element represented as quaternion (1x4)
         """
         theta = np.linalg.norm(self.w[:3])
-        u = self.w[:3] / theta
+        u = self.w[:3] / theta if theta else np.array([0, 0, 1])
         q = np.zeros(4)
         q[0] = np.cos(0.5 * theta)
         q[1] = u[0] * np.sin(0.5 * theta)

@@ -17,7 +17,7 @@ from scipy.optimize import least_squares
 
 from calculatorUKF import trajectoryLine
 from coilArray import CoilArray
-from predictorViewer import q2R, plotPos, plotErr, plotTrajectory, track3D, q2Euler
+from predictorViewer import q2R, plotPos, plotErr, plotTrajectory, q2ua, track3D, q2Euler
 from Lie import *
 from readData import readRecData, findPeakValley, runsend
 
@@ -432,18 +432,25 @@ class Predictor:
 
 if __name__ == '__main__':
     state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)  # 初始值
-    #states = np.array([28.4, -54.3, 222.6, 0.96891242, 0.20067111, 0.03239024, 0.0727262], dtype=float)  # 真实值
-    states = np.array([-50, 0, 200, 1, 0, 0, 0], dtype=float)
+    states = np.array([3.6, -147.7, 162.7, 0.81008725, 0.58584571, 0.00421135, 0.02292847], dtype=float)  # 真实值
+    #states = np.array([-50, 0, 200, 1, 0, 0, 0], dtype=float)
+    u1, a1 = q2ua(states[3:])
+    print("u1={}, a1={:.2f}".format(u1, a1))
 
     state = se3(vector=np.array([0, 0, 0, 0, 0, 300]))
-    stateX = se3(vector=np.array([0.5 * np.pi, 0, 0, 0, 0, 300]))
+    stateX = se3(vector=np.array([1.252, 0.009, 0.049, -0.066, -26.071, 233.36]))
+    u2 = stateX.w[:3]
+    a2 = np.linalg.norm(u2) * 57.3
+    print("q_se3={}".format(stateX.quaternion()))
+    print("R_se3=", stateX.exp().matrix())
+    print("u2={}, a2={:.2f}".format(u2, a2))
 
-    pred = Predictor(state=state0, currents=[2] * 16)
+    pred = Predictor(state=state, currents=[2] * 16)
 
-    #pred.sim(sensor_std=0.02, stateX=states)
+    pred.sim(sensor_std=0, stateX=stateX)
 
     #pred.simScipy(stateX=states, sensor_std=0.02)
 
     #pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=0.02, plotBool=True)
 
-    pred.simErrDistributed(contourBar=np.linspace(0, 50, 9), sensor_std=0.02, pos_or_ori=0)
+    #pred.simErrDistributed(contourBar=np.linspace(0, 50, 9), sensor_std=0.02, pos_or_ori=0)

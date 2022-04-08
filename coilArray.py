@@ -12,9 +12,9 @@ from predictorViewer import q2R
 
 
 class CoilArray:
-    distance = 150  # 初级线圈之间的距离[mm]
-    coilrows = 3    # 行数
-    coilcols = 3    # 列数
+    distance = 100  # 初级线圈之间的距离[mm]
+    coilrows = 4    # 行数
+    coilcols = 4    # 列数
     coilNum = coilrows * coilcols
     CAlength = distance * (coilrows - 1)   # 阵列的长度（x方向尺寸）
     CAwidth = distance * (coilcols - 1)    # 阵列的宽度（y方向尺寸）
