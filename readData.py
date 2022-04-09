@@ -1,6 +1,5 @@
 import binascii
 import csv
-import ctypes
 import re
 import sys
 import struct
@@ -9,12 +8,12 @@ from queue import Queue
 from multiprocessing.dummy import Process
 
 import numpy as np
-import matplotlib.pyplot as plt
 import pyqtgraph as pg
 import serial
 import serial.tools.list_ports
 
 from coilArray import CoilArray
+from predictorViewer import findPeakValley
 
 
 def runsend(open=True):
@@ -370,45 +369,6 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     timer.start(10)
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
-
-
-def findPeakValley(data, E0, noiseStd):
-    '''
-    寻峰算法:
-    1、对连续三个点a, b, c，若a<b && b>c，且b>E0，则b为峰点；若a>b && b<c，且b<E0，则b为谷点
-    2、保存邻近的峰点和谷点，取x=±n个点内的最大或最小值作为该区段的峰点或谷点
-    :param data: 【pd】读取的原始数据
-    :param E0: 【float】原始数据的平均值
-    :param noiseStd: 【float】噪声值
-    :param Vpp: 【float】原始数据的平均峰峰值
-    :return:
-    '''
-    dataSize = len(data)
-    E0 = np.array(data).mean()
-    #print("dataSize={}, E0={:.2f}".format(dataSize, E0))
-    # startIndex = data._stat_axis._start
-    # 找出满足条件1的峰和谷
-    peaks, valleys = [], []
-    for i in range(1, dataSize - 1):
-        d1, d2, d3 = data[i - 1], data[i], data[i + 1]  # 用于实时获取的数据
-        point = (i + 1, d2)
-        if d1 < d2 and d2 >= d3 and d2 > E0 + 3 * noiseStd:
-            if not peaks or i - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
-                peaks.append(point)
-            elif peaks[-1][1] < d2:  # 局部区域有更大的峰值
-                peaks[-1] = point
-        elif d1 > d2 and d2 <= d3 and d2 < E0 - 3 * noiseStd:
-            if not valleys or i - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
-                valleys.append(point)
-            elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
-                valleys[-1] = point
-
-    peaks_y = [peak[1] for peak in peaks]
-    valleys_y = [valley[1] for valley in valleys]
-
-    peakMean = sum(peaks_y) / len(peaks_y) if len(peaks_y) else 0
-    valleyMean = sum(valleys_y) / len(valleys_y) if len(valleys_y) else 0
-    return peakMean - valleyMean
 
 
 def runRec():

@@ -8,21 +8,12 @@ desc: 基于李代数LM非线性优化，实现内置式磁定位
 '''
 import time
 from queue import Queue
-import sys
-from multiprocessing.dummy import Process
 
 import numpy as np
-import OpenGL.GL as ogl
-import pyqtgraph as pg
-import pyqtgraph.opengl as gl
-from pyqtgraph.Qt import QtCore, QtGui
-from PyQt5.QtWidgets import QWidget
-from pyqtgraph.dockarea import DockArea, Dock
 
 from Lie import se3
 from coilArray import CoilArray
-from predictorViewer import Custom3DAxis, q2Euler
-from readData import readRecData, findPeakValley
+from predictorViewer import track3D
 
 
 class Predictor:
@@ -186,6 +177,7 @@ class Predictor:
                     v *= 2
             if i == maxIter:
                 self.stateOut(t0, i, mse, 'maxIter_step')
+                return self.state
 
     def stateOut(self, t0, i, mse, printStr):
         '''
@@ -210,176 +202,9 @@ class Predictor:
         print(printStr)
         print('i={}, pos={}mm, se3={}, timeConsume={:.3f}s, cost={:.3e}'.format(i, pos, np.round(self.state.w, 3), self.compTime, mse))
 
-    def track3D(self):
-        '''
-        运行真实的定位程序，描绘目标状态的3d轨迹
-        :param state: 【np.array】目标的状态
-        :return:
-        '''
-        app = QtGui.QApplication([])
-        qWidget = QWidget()
-        qWidget.setWindowTitle("磁定位显示界面")
-        qWidget.resize(800, 600)
-        qWidget.GLDock = Dock("\n3D位姿\n", size=(600, 500))
-
-        w = gl.GLViewWidget()
-        qWidget.GLDock.addWidget(w)
-
-        area = DockArea()
-        area.addDock(qWidget.GLDock, 'left')
-
-        # w.setWindowTitle('3d trajectory')
-        # w.resize(600, 500)
-        # instance of Custom3DAxis
-        axis = Custom3DAxis(w, color=(0.6, 0.6, 0.2, .6))
-        w.addItem(axis)
-        w.opts['distance'] = 75
-        w.opts['center'] = pg.Vector(0, 0, 0)
-        # add xy grid
-        gx = gl.GLGridItem()
-        gx.setSize(x=40, y=40, z=10)
-        gx.setSpacing(x=5, y=5)
-        w.addItem(gx)
-
-        h = QtGui.QHBoxLayout()
-        qWidget.setLayout(h)
-        h.addWidget(area)
-
-        # trajectory line
-        pos0 = np.array([[0, 0, 200]]) * 0.1
-        pos = self.state.exp().matrix()[:3, 3] * 0.1
-        angle = np.linalg.norm(self.state.w[:3])
-        uAxis = self.state.w[:3] / angle if angle else np.array([0, 0, 1])
-        angle *= 57.3
-        euler = q2Euler(self.state.quaternion())
-        track0 = np.concatenate((pos0, pos.reshape(1, 3)))
-        plt = gl.GLLinePlotItem(pos=track0, width=2, color=(1, 0, 0, 0.6))
-        w.addItem(plt)
-        # orientation arrow
-        sphereData = gl.MeshData.sphere(rows=20, cols=20, radius=0.6)
-        sphereMesh = gl.GLMeshItem(meshdata=sphereData, smooth=True, shader='shaded', glOptions='opaque')
-        w.addItem(sphereMesh)
-        ArrowData = gl.MeshData.cylinder(rows=20, cols=20, radius=[0.5, 0], length=1.5)
-        ArrowMesh = gl.GLMeshItem(meshdata=ArrowData, smooth=True, color=(1, 0, 0, 0.6), shader='balloon',
-                                glOptions='opaque')
-        ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
-        w.addItem(ArrowMesh)
-        # w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
-        # .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
-        #w.show()
-
-        # add Position
-        posDock = Dock("\n坐标/cm\n", size=(160, 10))
-        posText = QtGui.QLabel()
-        posText.setText(" x = {} \u00b1 {}\n\n y = {} \u00b1 {}\n z = {} \u00b1 {}".format(pos0[0, 0], 0, pos0[0, 1], 0, pos0[0, 2], 0))
-        posDock.addWidget(posText)
-        area.addDock(posDock, 'right')
-
-        # add euler angles
-        eulerDock = Dock("\n姿态角/\u00b0\n", size=(160, 10))
-        eulerText = QtGui.QLabel()
-        eulerText.setText("pitch = {:.0f} \u00b1 {}\n\n roll = {:.0f} \u00b1 {}\n yaw = {:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0, euler[2], 0))
-        eulerDock.addWidget(eulerText)
-        area.addDock(eulerDock, 'bottom', posDock)
-
-        # add time cost
-        timeDock = Dock("\n耗时/s\n", size=(160, 10))
-        timeText = QtGui.QLabel()
-        timeText.setText("total time: 0\ncompute time: 0")
-        timeDock.addWidget(timeText)
-        area.addDock(timeDock, 'bottom', eulerDock)
-
-        # add iter times
-        iterDock = Dock("\n迭代次数\n", size=(160, 10))
-        iterText = QtGui.QLabel()
-        iterText.setText("iter: 0")
-        iterDock.addWidget(iterText)
-        area.addDock(iterDock, 'bottom', timeDock)
-
-        qWidget.show()
-
-        i = 1
-        pts = pos.reshape(1, 3)
-        eulers = euler.reshape(1, 3)
-
-        
-        # 读取接收端数据
-        qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-        z = []
-        accData = []
-        procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
-        procReadRec.daemon = True
-        procReadRec.start()
-        time.sleep(0.5)
-
-        def update():
-            nonlocal i, pts, eulers, accData
-            # run LM predictor
-            if not qGyro.empty():
-                qGyro.get()
-            if not qAcc.empty():
-                accData = qAcc.get()
-        
-            if not qADC.empty():
-                adcV = qADC.get()
-                vm = findPeakValley(adcV, 0, 4e-6) * 0.5
-                if vm:
-                    z.append(vm * 1e6)
-            if len(z) == 16:
-                if accData:
-                    for i in range(3):
-                        z.append(accData[i])
-                    self.LM(z)
-                    z.clear()
-
-            # update position and orientation
-            pos = self.state.exp().matrix()[:3, 3] * 0.1
-            angle = np.linalg.norm(self.state.w[:3])
-            uAxis = self.state.w[:3] / angle if angle else np.array([0, 0, 1])
-            angle *= 57.3
-            euler = q2Euler(self.state.quaternion())
-            pt = pos.reshape(1, 3)
-            et = euler.reshape(1, 3)
-            if pts.size < 150:
-                pts = np.concatenate((pts, pt))
-                eulers = np.concatenate((eulers, et))
-            else:
-                pts = np.concatenate((pts[-50:, :], pt))
-                eulers = np.concatenate((eulers[-50:, :], et))
-            plt.setData(pos=pts)
-
-            stdPosX = pts[:, 0].std()
-            stdPosY = pts[:, 1].std()
-            stdPosz = pts[:, 2].std()
-            stdPitch = eulers[:, 0].std()
-            stdRoll = eulers[:, 1].std()
-            stdYaw = eulers[:, 2].std()
-
-            # update gui
-            ArrowMesh.resetTransform()
-            sphereMesh.resetTransform()
-            ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
-            ArrowMesh.translate(*pos)
-            sphereMesh.translate(*pos)
-            
-            # update state
-            posText.setText(" x = {:.2f} \u00b1 {:.2f}\n\n y = {:.2f} \u00b1 {:.2f}\n\n z = {:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosz))
-            eulerText.setText(" pitch = {:.0f} \u00b1 {:.0f}\n\n roll = {:.0f} \u00b1 {:.0f}\n\n yaw = {:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll, euler[2], stdYaw))
-            timeText.setText(" total time = {:.3f}s\n compute time = {:.3f}s".format(self.totalTime, self.compTime))
-            iterText.setText(" iter times = " + str(self.iter))
-            i += 1
-
-        timer = QtCore.QTimer()
-        timer.timeout.connect(update)
-        timer.start(50)
-
-        if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-            QtGui.QApplication.instance().exec_()
-
-
 
 if __name__ == '__main__':
     state = se3(vector=np.array([0, 0, 0, 0, 0, 200]))
     currents = [2.15, 2.18, 2.25, 2.36, 2.28, 2.25, 2.25, 2.33, 2.22, 2.35, 2.32, 2.3, 2.3, 2.38, 2.39, 2.27]
     pred = Predictor(state, currents)
-    pred.track3D()
+    track3D(state, qList=[Queue(), Queue(), Queue()], tracker=pred)

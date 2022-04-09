@@ -21,6 +21,43 @@ from PyQt5.QtWidgets import QWidget
 from pyqtgraph.dockarea import DockArea, Dock
 
 
+def findPeakValley(data, noiseStd):
+    '''
+    寻峰算法:
+    1、对连续三个点a, b, c，若a<b && b>c，且b>E0，则b为峰点；若a>b && b<c，且b<E0，则b为谷点
+    2、保存邻近的峰点和谷点，取x=±n个点内的最大或最小值作为该区段的峰点或谷点
+    :param data: 【pd】读取的原始数据
+    :param noiseStd: 【float】噪声值
+    :param Vpp: 【float】原始数据的平均峰峰值
+    :return:
+    '''
+    dataSize = len(data)
+    E0 = np.array(data).mean()
+    #print("dataSize={}, E0={:.2f}".format(dataSize, E0))
+    # startIndex = data._stat_axis._start
+    # 找出满足条件1的峰和谷
+    peaks, valleys = [], []
+    for i in range(1, dataSize - 1):
+        d1, d2, d3 = data[i - 1], data[i], data[i + 1]  # 用于实时获取的数据
+        point = (i + 1, d2)
+        if d1 < d2 and d2 >= d3 and d2 > E0 + 3 * noiseStd:
+            if not peaks or i - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
+                peaks.append(point)
+            elif peaks[-1][1] < d2:  # 局部区域有更大的峰值
+                peaks[-1] = point
+        elif d1 > d2 and d2 <= d3 and d2 < E0 - 3 * noiseStd:
+            if not valleys or i - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
+                valleys.append(point)
+            elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
+                valleys[-1] = point
+
+    peaks_y = [peak[1] for peak in peaks]
+    valleys_y = [valley[1] for valley in valleys]
+
+    peakMean = sum(peaks_y) / len(peaks_y) if len(peaks_y) else 0
+    valleyMean = sum(valleys_y) / len(valleys_y) if len(valleys_y) else 0
+    return peakMean - valleyMean
+
 def q2R(q):
     '''
     从四元数求旋转矩阵
@@ -57,6 +94,25 @@ def q2Euler(q):
     pitch = math.asin(2 * q0 * q2 - 2 * q3 * q1)
     yaw = math.atan2(2 * q0 * q3 + 2 * q1 * q2, 1 - 2 * q2 * q2 - 2 * q3 * q3)
     return np.array([pitch, roll, yaw]) * 57.3
+
+def parseState(state):
+    '''
+    从位姿状态中获取旋转矢量，并提取位置和欧拉角
+    :param state: 【np.array】/【se3】位姿
+    :return: 【list】[pos, angle, uAxis, euler]
+    '''
+    if isinstance(state, np.ndarray):
+        pos, q = np.array(state[:3]) * 0.1, state[3:7]
+        uAxis, angle = q2ua(q)
+        euler = q2Euler(q)
+    else:
+        pos = state.exp().matrix()[:3, 3] * 0.1
+        angle = np.linalg.norm(state.w[:3])
+        uAxis = state.w[:3] / angle if angle else np.array([0, 0, 1])
+        angle *= 57.3
+        euler = q2Euler(state.quaternion())
+    return [pos, angle, uAxis, euler]
+
 
 def plotLM(residual_memory, us):
     '''
@@ -345,7 +401,7 @@ class Custom3DAxis(gl.GLAxisItem):
         ogl.glEnd()
 
 
-def track3D(state):
+def track3D(state, qList=None, tracker=None):
     '''
     描绘目标状态的3d轨迹
     :param state: 【np.array】目标的状态
@@ -382,9 +438,8 @@ def track3D(state):
 
     # trajectory line
     pos0 = np.array([[0, 0, 0]]) * 0.1
-    pos, q = np.array(state[:3]), state[3:7]
-    uAxis, angle = q2ua(q)
-    euler = q2Euler(state[3: 7])
+
+    pos, angle, uAxis, euler = parseState(state)
     track0 = np.concatenate((pos0, pos.reshape(1, 3)))
     plt = gl.GLLinePlotItem(pos=track0, width=2, color=(1, 0, 0, 0.6))
     w.addItem(plt)
@@ -432,16 +487,38 @@ def track3D(state):
     qWidget.show()
 
     i = 1
+    # 记录位置和姿态的历史值
     pts = pos.reshape(1, 3)
     eulers = euler.reshape(1, 3)
 
+    z = []
+    accData = []
+
     def update():
-        nonlocal i, pts, state, eulers
+        nonlocal i, pts, state, eulers, accData
+
+        if qList:   # 从队列中获取实测数据，并更新姿态
+            qADC, qGyro, qAcc = qList
+            if not qGyro.empty():
+                qGyro.get()
+            if not qAcc.empty():
+                accData = qAcc.get()
+
+            if not qADC.empty():
+                adcV = qADC.get()
+                vm = findPeakValley(adcV, 4e-6) * 0.5
+                if vm:
+                    z.append(vm * 1e6)
+            if len(z) == 16:
+                if accData:
+                    for i in range(3):
+                        z.append(accData[i])
+                    tracker.LM(z)
+                    z.clear()
+                    state = tracker.state
 
         # update position and orientation
-        pos, q = np.array(state[:3]) * 0.1, state[3:7]
-        uAxis, angle = q2ua(q)
-        euler = q2Euler(q)
+        pos, angle, uAxis, euler = parseState(state)
         pt = pos.reshape(1, 3)
         et = euler.reshape(1, 3)
         if pts.size < 150:
@@ -469,8 +546,8 @@ def track3D(state):
         # update state
         posText.setText(" x = {:.2f} \u00b1 {:.2f}\n\n y = {:.2f} \u00b1 {:.2f}\n\n z = {:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosz))
         eulerText.setText(" pitch = {:.0f} \u00b1 {:.0f}\n\n roll = {:.0f} \u00b1 {:.0f}\n\n yaw = {:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll, euler[2], stdYaw))
-        timeText.setText(" total time = {:.3f}s\n compute time = {:.3f}s".format(state[-2], state[-3]))
-        iterText.setText(" iter times = " + str(int(state[-1])))
+        timeText.setText(" total time = {:.3f}s\n compute time = {:.3f}s".format(tracker.totalTime, tracker.compTime))
+        iterText.setText(" iter times = " + str(tracker.iter))
         i += 1
 
     timer = QtCore.QTimer()

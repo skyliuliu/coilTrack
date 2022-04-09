@@ -6,10 +6,8 @@ Email: Nicke_liu@163.com
 DateTime: 2022/3/3 19:50
 desc: 实现定位算法的类，依据状态量的维度有不同的形式
 '''
-import datetime
 import time
 from queue import Queue
-import multiprocessing
 from multiprocessing.dummy import Process
 
 import matplotlib.pyplot as plt
@@ -17,9 +15,9 @@ from scipy.optimize import least_squares
 
 from calculatorUKF import trajectoryLine
 from coilArray import CoilArray
-from predictorViewer import q2R, plotPos, plotErr, plotTrajectory, q2ua, track3D, q2Euler
+from predictorViewer import q2R, plotErr, plotTrajectory, track3D
 from Lie import *
-from readData import readRecData, findPeakValley, runsend
+from readData import readRecData
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -44,7 +42,12 @@ class Predictor:
 
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
-        self.m = self.coils.coilNum * 3
+        self.m = self.coils.coilNum + 3
+
+        self.t0 = time.time()
+        self.totalTime = 0
+        self.compTime = 0
+        self.iter = 0
 
         self.T = self.tR(state)
 
@@ -75,17 +78,17 @@ class Predictor:
         '''
         T = self.tR(state)
         dArray0 = T[:3, 3] - self.coils.coilArray
-        em2 = T[:3, :3][2]
+        em2 = T[:3, :3][:3, 2]
 
-        # E = np.zeros(self.m)
-        # for i, d in enumerate(dArray0):
-        #     E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
-        # 正交线圈
         E = np.zeros(self.m)
         for i, d in enumerate(dArray0):
-            E[3*i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1x, em2=em2, ii=self.currents[i])
-            E[3*i + 1] = self.coils.inducedVolatage(d=d, em1=self.coils.em1y, em2=em2, ii=self.currents[i])
-            E[3*i + 2] = self.coils.inducedVolatage(d=d, em1=self.coils.em1z, em2=em2, ii=self.currents[i])
+            E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
+        # 正交线圈
+        # E = np.zeros(self.m)
+        # for i, d in enumerate(dArray0):
+        #     E[3*i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1x, em2=em2, ii=self.currents[i])
+        #     E[3*i + 1] = self.coils.inducedVolatage(d=d, em1=self.coils.em1y, em2=em2, ii=self.currents[i])
+        #     E[3*i + 2] = self.coils.inducedVolatage(d=d, em1=self.coils.em1z, em2=em2, ii=self.currents[i])
         return E
 
     def hh(self, state):
@@ -96,7 +99,7 @@ class Predictor:
         """
         T = self.tR(state)
         dArray0 = T[:3, 3] - self.coils.coilArray
-        em2 = T[:3, :3][2]
+        em2 = T[:3, :3][:3, 2]
 
         EA = np.zeros(self.m)
         for i, d in enumerate(dArray0):
@@ -115,7 +118,7 @@ class Predictor:
         :return:
         '''
         TX = self.tR(stateX)
-        midData = self.h(stateX)
+        midData = self.hh(stateX)
         t = TX[:3, 3]
         ez = TX[2, :3]
 
@@ -138,7 +141,7 @@ class Predictor:
         :param measureData:  【np.array】观测值
         :return: 【np.array】观测值 - 预测值
         '''
-        eastData = self.h(state)
+        eastData = self.hh(state)
         return measureData - eastData
 
     def derive(self, param_index):
@@ -161,8 +164,8 @@ class Predictor:
             state1[param_index] += delta
             state2[param_index] -= delta
 
-        data_est_output1 = self.h(state1)
-        data_est_output2 = self.h(state2)
+        data_est_output1 = self.hh(state1)
+        data_est_output2 = self.hh(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
@@ -199,7 +202,7 @@ class Predictor:
         eps_step = 1e-3
         eps_residual = 1e-3
 
-        t0 = datetime.datetime.now()
+        t0 = time.time()
         res = self.residual(self.state, measureData)
         J = self.jacobian()
         A = J.T.dot(J)
@@ -218,7 +221,7 @@ class Predictor:
                 step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
                 if np.linalg.norm(step) <= eps_step:
                     self.stateOut(t0, i, mse, 'threshold_step')
-                    return
+                    return self.state
 
                 if isinstance(self.state, se3):
                     newState = se3(vector=self.state.vector() + step)   # 先将se3转换成数组相加，再变回李代数，这样才符合LM算法流程
@@ -243,7 +246,7 @@ class Predictor:
                             self.stateOut(t0, i, mse, 'threshold_stop')
                         if mse <= eps_residual:
                             self.stateOut(t0, i, mse, 'threshold_residual')
-                        return
+                        return self.state
 
                     else:
                         break
@@ -251,7 +254,9 @@ class Predictor:
                     u *= v
                     v *= 2
 
-            self.stateOut(t0, i, mse, '')
+            if i == maxIter:
+                self.stateOut(t0, i, mse, 'maxIter_step')
+                return self.state
 
     def stateOut(self, t0, i, mse, printStr):
         '''
@@ -261,14 +266,18 @@ class Predictor:
         :param mse: 【float】残差
         :return:
         '''
+        self.compTime = time.time() - t0
+        self.totalTime = time.time() - self.t0
+        self.t0 = time.time()
+        self.iter = i
+
         if not self.printBool:
             return
 
-        timeCost = (datetime.datetime.now() - t0).total_seconds()
         T = self.tR(self.state)
         t = np.round(T[:3, 3], 1)
         em = np.round(T[2, :3], 3)
-        print('{}:\ni={}, t={}mm, em={}, timeConsume={:.3f}s, cost={:.3e}'.format(printStr, i, t, em, timeCost, mse))
+        print('{}:\ni={}, t={}mm, em={}, compTime={:.3f}s, cost={:.3e}'.format(printStr, i, t, em, self.compTime, mse))
 
     def compErro(self, state, stateX):
         '''
@@ -330,7 +339,7 @@ class Predictor:
 
         Eest = np.zeros(self.m)
         for i in range(self.m):
-            Eest[i] = self.coils.inducedVolatage(d=d[i], em2=em2, ii=self.currents[i])
+            Eest[i] = self.coils.inducedVolatage(d=d[i], em1=self.coils.em1, em2=em2, ii=self.currents[i])
 
         return Eest - measureData
 
@@ -429,28 +438,50 @@ class Predictor:
 
         plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
 
-
-if __name__ == '__main__':
+def sim():
+    '''
+    仿真
+    :return:
+    '''
     state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)  # 初始值
     states = np.array([3.6, -147.7, 162.7, 0.81008725, 0.58584571, 0.00421135, 0.02292847], dtype=float)  # 真实值
-    #states = np.array([-50, 0, 200, 1, 0, 0, 0], dtype=float)
-    u1, a1 = q2ua(states[3:])
-    print("u1={}, a1={:.2f}".format(u1, a1))
+    # states = np.array([-50, 0, 200, 1, 0, 0, 0], dtype=float)
 
     state = se3(vector=np.array([0, 0, 0, 0, 0, 300]))
     stateX = se3(vector=np.array([1.252, 0.009, 0.049, -0.066, -26.071, 233.36]))
-    u2 = stateX.w[:3]
-    a2 = np.linalg.norm(u2) * 57.3
-    print("q_se3={}".format(stateX.quaternion()))
-    print("R_se3=", stateX.exp().matrix())
-    print("u2={}, a2={:.2f}".format(u2, a2))
 
-    pred = Predictor(state=state, currents=[2] * 16)
+    pred = Predictor(state=state0, currents=[2] * 16)
 
-    pred.sim(sensor_std=0, stateX=stateX)
+    pred.sim(sensor_std=0, stateX=states)
 
     #pred.simScipy(stateX=states, sensor_std=0.02)
 
-    #pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=0.02, plotBool=True)
+    # pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=0.02, plotBool=True)
 
-    #pred.simErrDistributed(contourBar=np.linspace(0, 50, 9), sensor_std=0.02, pos_or_ori=0)
+    # pred.simErrDistributed(contourBar=np.linspace(0, 50, 9), sensor_std=0.02, pos_or_ori=0)
+
+def run():
+    '''
+    启动实时定位
+    :return:
+    '''
+    qADC, qGyro, qAcc = Queue(), Queue(), Queue()
+    z = []
+    state = np.array([0, 0, 200, 1, 0, 0, 0])
+
+    # 读取接收端数据
+    procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
+    procReadRec.daemon = True
+    procReadRec.start()
+    time.sleep(0.5)
+
+    # 读取发射端的电流，然后创建定位器对象
+    currents = [2.15, 2.18, 2.25, 2.36, 2.28, 2.25, 2.25, 2.33, 2.22, 2.35, 2.32, 2.3, 2.3, 2.38, 2.39, 2.27]
+    # runsend(open=True)
+    pred = Predictor(state, currents)
+
+    # 描绘3D轨迹
+    track3D(state, qList=[qADC, qGyro, qAcc], tracker=pred)
+
+if __name__ == '__main__':
+    sim()
