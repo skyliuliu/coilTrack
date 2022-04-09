@@ -287,7 +287,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
         if not qADC.empty():
             adcV = qADC.get()
             adcVmean = np.array(adcV).mean()
-            vpp = findPeakValley(adcV, adcVmean, 6e-6)
+            vpp = findPeakValley(adcV, 6e-6)
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
@@ -385,4 +385,4 @@ def runRec():
 
 
 if __name__ == "__main__":
-    runRec()
+    runsend()

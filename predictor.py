@@ -199,7 +199,7 @@ class Predictor:
         """
         tao = 1e-3
         eps_stop = 1e-9
-        eps_step = 1e-3
+        eps_step = 1e-4
         eps_residual = 1e-3
 
         t0 = time.time()
@@ -216,7 +216,7 @@ class Predictor:
         for i in range(maxIter):
             i += 1
             while True:
-
+                
                 Hessian_LM = A + u * np.eye(self.n)  # calculating Hessian matrix in LM
                 step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
                 if np.linalg.norm(step) <= eps_step:
@@ -466,8 +466,8 @@ def run():
     :return:
     '''
     qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-    z = []
-    state = np.array([0, 0, 200, 1, 0, 0, 0])
+    state = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)
+    state_se3 = se3(vector=np.array([0, 0, 0, 0, 0, 200]))
 
     # 读取接收端数据
     procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
@@ -476,7 +476,7 @@ def run():
     time.sleep(0.5)
 
     # 读取发射端的电流，然后创建定位器对象
-    currents = [2.15, 2.18, 2.25, 2.36, 2.28, 2.25, 2.25, 2.33, 2.22, 2.35, 2.32, 2.3, 2.3, 2.38, 2.39, 2.27]
+    currents = [2.22, 2.2, 2.31, 2.37, 2.32, 2.26, 2.26, 2.37, 2.24, 2.37, 2.36, 2.32, 2.34, 2.42, 2.41, 2.3]
     # runsend(open=True)
     pred = Predictor(state, currents)
 
@@ -484,4 +484,4 @@ def run():
     track3D(state, qList=[qADC, qGyro, qAcc], tracker=pred)
 
 if __name__ == '__main__':
-    sim()
+    run()

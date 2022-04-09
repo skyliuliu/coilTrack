@@ -515,12 +515,12 @@ def track3D(state, qList=None, tracker=None):
                         z.append(accData[i])
                     tracker.LM(z)
                     z.clear()
-                    state = tracker.state
 
         # update position and orientation
-        pos, angle, uAxis, euler = parseState(state)
+        pos, angle, uAxis, euler = parseState(tracker.state)
         pt = pos.reshape(1, 3)
         et = euler.reshape(1, 3)
+
         if pts.size < 150:
             pts = np.concatenate((pts, pt))
             eulers = np.concatenate((eulers, et))
@@ -552,7 +552,7 @@ def track3D(state, qList=None, tracker=None):
 
     timer = QtCore.QTimer()
     timer.timeout.connect(update)
-    timer.start(50)
+    timer.start(20)
 
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
