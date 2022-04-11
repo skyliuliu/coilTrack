@@ -159,11 +159,11 @@ class CoilArray:
         :return: E 感应电压 [1e-6V] (m, )
         """
         dArray0 = state[:3] - self.coilArray
-        em2 = q2R(state[3: 7])[2]
+        em2 = q2R(state[3: 7])[:, -1]
 
         E = np.zeros(self.coilNum)
         for i, d in enumerate(dArray0):
-            E[i] = self.inducedVolatage(d=d, em1=self.em1s[i], em2=em2, ii=self.currents[i])
+            E[i] = self.inducedVolatage(d=d, em1=self.em1, em2=em2, ii=self.currents[i])
         return E
 
     def hh(self, state):
@@ -177,7 +177,7 @@ class CoilArray:
 
         EA = np.zeros(self.coilNum + 3)
         for i, d in enumerate(dArray0):
-            EA[i] = self.inducedVolatage(d=d, em2=em2, ii=self.currents[i])
+            EA[i] = self.inducedVolatage(d=d, em1=self.em1, em2=em2, ii=self.currents[i])
 
         EA[-3] = -1000 * em2[-3]  # x反向
         EA[-2] = -1000 * em2[-2]  # y反向

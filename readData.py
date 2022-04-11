@@ -144,7 +144,7 @@ def readRecData(q1, q2, q3):
     UAV_OBJ_GYRO = 0xADC3A85C
 
     port = "COM5"
-    ser = serial.Serial(port, 460800, timeout=0.5)
+    ser = serial.Serial(port, 921600, timeout=0.5)
     if ser.isOpen():
         print("open {} success!\n".format(port))
     else:
@@ -227,7 +227,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     pMeaVSsim.addLegend()
     pMeaVSsim.setLabel('left', '电压', units='uV')
     pMeaVSsim.setLabel('bottom', '采样包数', units='1')
-    curveMea = pMeaVSsim.plot(pen='r', name='实测')
+    curveMea = pMeaVSsim.plot(x=np.arange(17), y=np.arange(16),stepMode=True, fillLevel=0, fillOutline=True, brush='b', name='实测')
     curveSim = pMeaVSsim.plot(pen='g', name='理论')
     win.nextRow()
 
@@ -266,7 +266,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     iVS = 0
 
     # sim data
-    state = np.array([0, 0, 145 + 7.5, 1, 0, 0, 0])  # 真实值
+    state = np.array([0, 0, 195 + 7.5, 1, 0, 0, 0])  # 真实值
     coils = CoilArray(np.array(currents))
     VppSim = coils.h(state) * 2
 
@@ -280,6 +280,8 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     qAcc_y = Queue()
     qAcc_z = Queue()
     xIMU = 0
+    meaData = []
+    simData = []
 
     def update():
         nonlocal iADC, xIMU, iVS
@@ -293,7 +295,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
                 xVS.put(iVS)
                 yMea.put(vpp * 1e6)
                 ySim.put(VppSim[iVS % 16 - 1])
-                print('iVS={}, vpp={:.2f}uV'.format(iVS % 16, vpp * 1e6))
+                #print('iVS={}, vpp={:.2f}uV'.format(iVS % 16, vpp * 1e6))
 
             n = len(adcV)
             for v in adcV:
@@ -321,11 +323,14 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
                 yADC.get()
 
         if xVS.qsize() > 16:
-            xVS.get()
-            yMea.get()
-            ySim.get()
-        curveMea.setData(xVS.queue, yMea.queue)
-        curveSim.setData(xVS.queue, ySim.queue)
+            for _ in range(16):
+                xVS.get()
+                meaData.append(yMea.get())
+                simData.append(ySim.get())
+            curveMea.setData(np.arange(17), meaData)
+            curveSim.setData(np.arange(0.5, 16.5), simData)
+            meaData.clear()
+            simData.clear()
 
         # gyroscope
         xIMU += 1

@@ -426,6 +426,7 @@ def track3D(state, qList=None, tracker=None):
     w.addItem(axis)
     w.opts['distance'] = 75
     w.opts['center'] = pg.Vector(0, 0, 0)
+    w.opts['azimuth'] = -60
     # add xy grid
     gx = gl.GLGridItem()
     gx.setSize(x=40, y=40, z=10)
@@ -558,5 +559,5 @@ def track3D(state, qList=None, tracker=None):
         QtGui.QApplication.instance().exec_()
 
 if __name__ == '__main__':
-    state = np.array([0, 0, 215, 1, 0, 0, 0, 0.1, 2])
+    state = np.array([0, 0, 215, 1, 0, 0, 0], dtype=float)
     track3D(state)
