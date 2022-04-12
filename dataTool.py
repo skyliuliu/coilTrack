@@ -47,10 +47,11 @@ def findPeakValley(data, E0, noiseStd):
     # 计算每包数据的峰和谷的平均值
     peakMeans = []  # 存储每包数据的peakMean值
     start = peaks[0][0]
+    print("start={}, peaks_n={}, valleys_n={}".format(start, len(peaks), len(valleys)))
     peakSum = peaks[0][1]
     index = 1
     for point in peaks[1:]:
-        if point[0] - start < 2000:   # 每包数据起始和结尾下标之差不超过800，下同
+        if point[0] - start < 600:   # 每包数据起始和结尾下标之差不超过800，下同
             peakSum += point[1]
             index += 1
         else:
@@ -65,7 +66,7 @@ def findPeakValley(data, E0, noiseStd):
     valleySum = valleys[0][1]
     index = 1
     for point in valleys[1:]:
-        if point[0] - start < 2000:
+        if point[0] - start < 600:
             valleySum += point[1]
             index += 1
         else:
@@ -169,10 +170,10 @@ def fftPack(p):
     :param p: 每个包的数据（非零）
     :return:
     '''
-    print("pL=", len(p))
-    pack = p[200:]   # 选取稳定阶段的数据
+    print("包内的数据个数=", len(p))
+    pack = p[:]   # 选取稳定阶段的数据
     L = len(pack)   # 数据长度
-    print("L=", L)
+    print("使用的数据个数=", L)
     N = int(np.power(2, np.ceil(np.log2(L))))  # 下一个最近二次幂
     Fs = 964 * 100    # 采样率
 
@@ -194,13 +195,13 @@ def fftPack(p):
 
 if __name__ == '__main__':
     # 用pandas读取
-    data = pd.read_csv('adcV_20ms.csv', names=['i', 'E'], header=0)
+    data = pd.read_csv('data.csv', names=['i', 'E'], header=0)
     E0 = data.loc[0: 1000]['E'].mean()  # 求E的均值
 
     # 寻峰，并计算均值
-    findPeakValley(data, E0, noiseStd=6e-6)
+    # findPeakValley(data, E0, noiseStd=6e-6)
 
-    # compEpp(data.loc[0: 65000])
+    # compEpp(data.loc[45000: 65000])
 
-    #compFFT(data)
+    compFFT(data.loc[60000: 105000])
 

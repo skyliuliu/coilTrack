@@ -13,7 +13,7 @@ import serial
 import serial.tools.list_ports
 
 from coilArray import CoilArray
-from predictorViewer import findPeakValley
+from predictorViewer import findPeakValley, fftComp
 
 
 def runsend(open=True):
@@ -289,13 +289,14 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
         if not qADC.empty():
             adcV = qADC.get()
             adcVmean = np.array(adcV).mean()
+            #vpp = fftComp(adcV) * 2
             vpp = findPeakValley(adcV, 6e-6)
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
                 yMea.put(vpp * 1e6)
                 ySim.put(VppSim[iVS % 16 - 1])
-                #print('iVS={}, vpp={:.2f}uV'.format(iVS % 16, vpp * 1e6))
+                print('iVS={}, vpp={:.2f}uV'.format(iVS % 16, vpp * 1e6))
 
             n = len(adcV)
             for v in adcV:
@@ -390,4 +391,4 @@ def runRec():
 
 
 if __name__ == "__main__":
-    runsend()
+    runRec()

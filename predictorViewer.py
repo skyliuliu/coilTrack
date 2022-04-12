@@ -19,7 +19,27 @@ import pyqtgraph.opengl as gl
 from pyqtgraph.Qt import QtCore, QtGui
 from PyQt5.QtWidgets import QWidget
 from pyqtgraph.dockarea import DockArea, Dock
+from scipy.fftpack import fft
 
+
+def fftComp(data):
+    '''
+    傅里叶变换提取峰值
+    :param points: 【np.array】原始数据
+    :return: 【float】峰值Vm
+    '''
+    E0 = np.array(data).mean()
+    pack = data[50:] - E0   # 选取稳定阶段的数据
+    L = len(pack)   # 数据长度
+    N = int(np.power(2, np.ceil(np.log2(L))))  # 下一个最近二次幂
+    Fs = 964 * 100    # 采样率
+
+    FFT_y1 = np.abs(fft(pack, N)) / L * 2   # N点FFT 变化,但处于信号长度
+    FFT_y1 = FFT_y1[range(int(N / 2))]   # 取一半
+    freq = np.arange(int(N / 2)) * Fs / N   # 频率坐标
+
+    peak = FFT_y1.max()    # 提取最大值
+    return peak
 
 def findPeakValley(data, noiseStd):
     '''
@@ -29,7 +49,7 @@ def findPeakValley(data, noiseStd):
     :param data: 【pd】读取的原始数据
     :param noiseStd: 【float】噪声值
     :param Vpp: 【float】原始数据的平均峰峰值
-    :return:
+    :return: 【float】峰谷值Vpp
     '''
     dataSize = len(data)
     E0 = np.array(data).mean()
@@ -40,12 +60,12 @@ def findPeakValley(data, noiseStd):
     for i in range(1, dataSize - 1):
         d1, d2, d3 = data[i - 1], data[i], data[i + 1]  # 用于实时获取的数据
         point = (i + 1, d2)
-        if d1 < d2 and d2 >= d3 and d2 > E0 + 3 * noiseStd:
+        if d1 < d2 and d2 >= d3 and d2 > E0 + noiseStd:
             if not peaks or i - peaks[-1][0] > 9:  # 第一次遇到峰值或距离上一个峰值超过9个数
                 peaks.append(point)
             elif peaks[-1][1] < d2:  # 局部区域有更大的峰值
                 peaks[-1] = point
-        elif d1 > d2 and d2 <= d3 and d2 < E0 - 3 * noiseStd:
+        elif d1 > d2 and d2 <= d3 and d2 < E0 - noiseStd:
             if not valleys or i - valleys[-1][0] > 9:  # 第一次遇到谷值或距离上一个谷值超过9个数
                 valleys.append(point)
             elif valleys[-1][1] > d2:  # 局部区域有更小的谷值
