@@ -192,3 +192,4 @@ if __name__ == '__main__':
     state = np.array([0, -5, 195+7.5, 1, 0, 0, 0])
     vm = coils.h(state)
     print('vm(uV):\n', np.round(vm, 0))
+
