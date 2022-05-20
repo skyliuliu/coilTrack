@@ -16,6 +16,7 @@ from coilArray import CoilArray
 from predictorViewer import findPeakValley, fftComp
 
 
+
 def runsend(open=True):
     port = "COM3"
     ser = serial.Serial(port, 921600, timeout=0.3)
@@ -186,19 +187,19 @@ def readRecData(q1, q2, q3):
 
                         if instADCId == 0 and adcVlist:
                             coilIndex += 1
-                            q1.put(adcVlist.copy())
+                            q1.put([time.time(), adcVlist.copy()])
                             #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))
-                            adcVlist.clear()        
+                            adcVlist.clear()
 
                         for i in range(6, readLen, 2):
                             adcV = int.from_bytes(dataBuff[i: i + 2], 'little') * 1e-6
                             adcVlist.append(adcV)
 
-                        if instADCId == 7:
-                            coilIndex += 1
-                            q1.put(adcVlist.copy())
-                            #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))
-                            adcVlist.clear() 
+                        # if instADCId == 7:   # 特别针对5ms的情况
+                        #     coilIndex += 1
+                        #     q1.put([time.time(), adcVlist.copy()])
+                        #     #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))
+                        #     adcVlist.clear() 
                                
                     elif objId == UAV_OBJ_GYRO:
                         gyro = struct.unpack('f'*3, dataBuff[6: 18])
@@ -216,34 +217,34 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     win.setWindowTitle("接收端采样")
     pg.setConfigOptions(antialias=True)
 
-    pADC = win.addPlot(title='ADC', col=0)
+    pADC = win.addPlot(title='ADC', axisItems = {'bottom': pg.DateAxisItem()}, col=0)
     pADC.addLegend()
     pADC.setLabel('left', '电压', units='V')
-    pADC.setLabel('bottom', 'points', units='1')
+    pADC.setLabel('bottom', 'time', units='s')
     pADC.showGrid(x=True, y=True)
     curveADC = pADC.plot()
 
     pMeaVSsim = win.addPlot(title='实测 vs 理论', col=1)
     pMeaVSsim.addLegend()
     pMeaVSsim.setLabel('left', '电压', units='uV')
-    pMeaVSsim.setLabel('bottom', '采样包数', units='1')
+    pMeaVSsim.setLabel('bottom', '线圈编号', units='1')
     curveMea = pMeaVSsim.plot(x=np.arange(17), y=np.arange(16),stepMode=True, fillLevel=0, fillOutline=True, brush='b', name='实测')
     curveSim = pMeaVSsim.plot(pen='g', name='理论')
     win.nextRow()
 
-    pGyro = win.addPlot(title='gyroscope', col=0)
+    pGyro = win.addPlot(title='gyroscope', axisItems = {'bottom': pg.DateAxisItem()}, col=0)
     pGyro.addLegend()
     pGyro.setLabel('left', '角速度', units='deg/s')
-    pGyro.setLabel('bottom', 'points', units='1')
+    pGyro.setLabel('bottom', 'time', units='s')
     pGyro.showGrid(x=True, y=True)
     curveGyro_x = pGyro.plot(pen='r', name='x')
     curveGyro_y = pGyro.plot(pen='g', name='y')
     curveGyro_z = pGyro.plot(pen='b', name='z')
 
-    pAcc = win.addPlot(title='accelerator', col=1)
+    pAcc = win.addPlot(title='accelerator', axisItems = {'bottom': pg.DateAxisItem()}, col=1)
     pAcc.addLegend()
     pAcc.setLabel('left', '加速度', units='mg')
-    pAcc.setLabel('bottom', 'points', units='1')
+    # pAcc.setLabel('bottom', 'time')
     pAcc.showGrid(x=True, y=True)
     curveAcc_x = pAcc.plot(pen='r', name='x')
     curveAcc_y = pAcc.plot(pen='g', name='y')
@@ -259,7 +260,6 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     # ADC
     xADC = Queue()
     yADC = Queue()
-    iADC = 0
     xVS = Queue()
     yMea = Queue()
     ySim = Queue()
@@ -279,49 +279,42 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     qAcc_x = Queue()
     qAcc_y = Queue()
     qAcc_z = Queue()
-    xIMU = 0
     meaData = []
     simData = []
 
     def update():
-        nonlocal iADC, xIMU, iVS
+        nonlocal iVS
         # ADC  
         if not qADC.empty():
-            adcV = qADC.get()
+            adcPack = qADC.get()
+            now = adcPack[0]
+            adcV = adcPack[1]
             adcVmean = np.array(adcV).mean()
-            #vpp = fftComp(adcV) * 2
+            # vpp = fftComp(adcV) * 2      # FFT
             vpp = findPeakValley(adcV, 6e-6)
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
                 yMea.put(vpp * 1e6)
                 ySim.put(VppSim[iVS % 16 - 1])
-                print('iVS={}, vpp={:.2f}uV'.format(iVS % 16, vpp * 1e6))
+                # print('iVS={}, vpp={:.2f}uV'.format(iVS % 16, vpp * 1e6))
 
-            n = len(adcV)
-            for v in adcV:
-                yADC.put(v - adcVmean)
-                iADC += 1
-                xADC.put(iADC)
-
-                if fcsv:  # 导出数据
-                    fcsv.writerow((iADC, v - adcVmean))
-
-        else:
-            n = 500
-            for _ in range(n):
-                yADC.put(0)
-                iADC += 1
-                xADC.put(iADC)
+            points = len(adcV)
+            dt = 0.008 / points
+            # print("{:.3f}: get {} adc data".format(now, points))
+            for i in range(points):
+                yADC.put(adcV[i] - adcVmean)
+                now += dt
+                xADC.put(now)
 
                 if fcsv:  # 导出数据
-                    fcsv.writerow((iADC, 0))
-        curveADC.setData(xADC.queue, yADC.queue)
+                    fcsv.writerow((now, adcV[i] - adcVmean))
 
-        if iADC > 50000:
-            for _ in range(n):
-                xADC.get()
-                yADC.get()
+                if xADC.qsize() > points * 16 * 5:
+                    xADC.get()
+                    yADC.get()
+
+        curveADC.setData(xADC.queue, yADC.queue) 
 
         if xVS.qsize() > 16:
             for _ in range(16):
@@ -334,13 +327,12 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
             simData.clear()
 
         # gyroscope
-        xIMU += 1
         if not qGyro.empty():
             w = qGyro.get()
             qGyro_x.put(w[0])
             qGyro_y.put(w[1])
             qGyro_z.put(w[2])
-            xGyro.put(xIMU)
+            xGyro.put(time.time())
 
             curveGyro_x.setData(xGyro.queue, qGyro_x.queue)
             curveGyro_y.setData(xGyro.queue, qGyro_y.queue)
@@ -358,7 +350,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
             qAcc_x.put(a[0])
             qAcc_y.put(a[1])
             qAcc_z.put(a[2])
-            xAcc.put(xIMU)
+            xAcc.put(time.time())
 
             curveAcc_x.setData(xAcc.queue, qAcc_x.queue)
             curveAcc_y.setData(xAcc.queue, qAcc_y.queue)
