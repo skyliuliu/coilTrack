@@ -5,6 +5,7 @@ import sys
 import struct
 import time
 from queue import Queue
+import multiprocessing
 from multiprocessing.dummy import Process
 
 import numpy as np
@@ -17,7 +18,7 @@ from predictorViewer import findPeakValley, fftComp
 
 
 
-def runsend(open=True):
+def runsend(currents, cmd, open=True):
     port = "COM3"
     ser = serial.Serial(port, 921600, timeout=0.3)
     if ser.isOpen():
@@ -26,57 +27,49 @@ def runsend(open=True):
         raise RuntimeError("open failed")
 
     # 启动发射端的命令
-    cmd = "EB 90 01 32 05 01 90 00 00 00 AA 55" if open else "EB 90 00 32 05 01 90 00 00 00 AA 55"
     cmdList = cmd.split(' ')
     cmd2 = b''.join([binascii.a2b_hex(s) for s in cmdList])
-    #ser.write(cmd2)
+    ser.write(cmd2)
 
-    data = ser.readline()
     '''
     data数据格式
     b'9\xaaU\xeb\x90chC:039\xaaU\xeb\x90chC:039'
     \xaaU\xeb\x90chD:000
     '''
-    dataRe = re.findall(b'ch\w:\d{3}', data)
-    print('--time:{:.3f}--------data size={}---------'.format(time.time(), len(dataRe)))
     chCurrents = {
-        'ch1': {},
-        'ch2': {},
-        'ch3': {},
-        'ch4': {},
-        'ch5': {},
-        'ch6': {},
-        'ch7': {},
-        'ch8': {},
-        'ch9': {},
-        'chA': {},
-        'chB': {},
-        'chC': {},
-        'chD': {},
-        'chE': {},
-        'chF': {},
-        'chG': {}
+        'ch1': 0,
+        'ch2': 0,
+        'ch3': 0,
+        'ch4': 0,
+        'ch5': 0,
+        'ch6': 0,
+        'ch7': 0,
+        'ch8': 0,
+        'ch9': 0,
+        'chA': 0,
+        'chB': 0,
+        'chC': 0,
+        'chD': 0,
+        'chE': 0,
+        'chF': 0,
+        'chG': 0
     }
-    for chc in dataRe:
-        ch = str(chc[:3], encoding='utf-8')
-        currentStr = str(chc[-3:], encoding='utf-8')
-        # 取整数部分和小数部分，拼接起来后只取小数点后两位有效数字
-        current = round(int(currentStr[0]) + int(currentStr[1:3]) * 0.01, 2)
-        if chCurrents[ch].get(current) == None:
-            chCurrents[ch][current] = 0
-        else:
-            chCurrents[ch][current] += 1
-    print(chCurrents)
-    
-    currents = []
-    for ch in chCurrents:
-        chCurrent = chCurrents.get(ch)
-        currenMax = 0
-        for current in chCurrent:
-            if chCurrent.get(current) > currenMax:
-                currenMax = current 
-        currents.append(currenMax)
-    print(currents)
+
+    while True:
+        if ser.inWaiting():
+            data = ser.readall()
+            dataRe = re.findall(b'ch\w:\d{3}', data)
+
+            for chx in dataRe:
+                ch = str(chx[:3], encoding='utf-8')
+                # 取整数部分和小数部分，拼接起来后只取小数点后两位有效数字
+                currentStr = str(chx[-3:], encoding='utf-8') 
+                current = round(int(currentStr[0]) + int(currentStr[1:3]) * 0.01, 2)
+                chCurrents[ch] = current
+            print(currents[:])
+
+            currents = list(chCurrents.values())
+        # time.sleep(0.2)
     return currents
 
 
@@ -377,8 +370,15 @@ def runRec():
     procReadRec.start()
     #time.sleep(1)
 
-    #currents = runsend(open=True)
-    currents = [2.21, 2.22, 2.31, 2.39, 2.33, 2.31, 2.29, 2.34, 2.29, 2.38, 2.36, 2.31, 2.35, 2.41, 2.42, 2.35]
+    currents = multiprocessing.Array('f', [2] * 16)
+    # 启动发射端的命令
+    # 帧头帧尾：0xEB,0x90,          ,0xaa,0x55
+    # 软件使能1字节，间隔时间1字节，导通时间1字节，处理时间2字节：例如1000ms = 0x03e8，通道选择1字节，通道电流调节1字节，通道校准模式1字节
+    cmd = "EB 90 01 32 08 01 90 00 00 00 AA 55" if open else "EB 90 00 32 05 01 90 00 00 00 AA 55"
+    procReadSend = Process(target=runsend, args=(currents, cmd, True))
+    procReadSend.daemon = True
+    procReadSend.start()
+
     plotRecData(q1, q2, q3, currents=currents, file=None)
 
 
