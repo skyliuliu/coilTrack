@@ -39,6 +39,8 @@ def fftComp(data):
     freq = np.arange(int(N / 2)) * Fs / N   # 频率坐标
 
     peak = FFT_y1.max()    # 提取最大值
+    f0 = freq[FFT_y1.tolist().index(peak)]    # 提取f0
+
     return peak
 
 def findPeakValley(data, noiseStd):
@@ -526,10 +528,12 @@ def track3D(state, qList=None, tracker=None):
                 accData = qAcc.get()
 
             if not qADC.empty():
-                adcV = qADC.get()
-                vm = findPeakValley(adcV, 4e-6) * 0.5
+                adcPack = qADC.get()
+                adcV = adcPack[1]
+                vm = findPeakValley(adcV, 6) * 0.5
+                # vm = fftComp(adcV)
                 if vm:
-                    z.append(vm * 1e6)
+                    z.append(vm)
             if len(z) == 16:
                 if accData:
                     for i in range(3):

@@ -18,7 +18,7 @@ from predictorViewer import findPeakValley, fftComp
 
 
 
-def runsend(currents, cmd, open=True):
+def runsend(open=True):
     port = "COM3"
     ser = serial.Serial(port, 921600, timeout=0.3)
     if ser.isOpen():
@@ -27,6 +27,7 @@ def runsend(currents, cmd, open=True):
         raise RuntimeError("open failed")
 
     # 启动发射端的命令
+    cmd = "EB 90 01 32 08 01 90 00 00 00 AA 55" if open else "EB 90 00 32 05 01 90 00 00 00 AA 55"
     cmdList = cmd.split(' ')
     cmd2 = b''.join([binascii.a2b_hex(s) for s in cmdList])
     ser.write(cmd2)
@@ -66,11 +67,10 @@ def runsend(currents, cmd, open=True):
                 currentStr = str(chx[-3:], encoding='utf-8') 
                 current = round(int(currentStr[0]) + int(currentStr[1:3]) * 0.01, 2)
                 chCurrents[ch] = current
-            print(currents[:])
-
+            
             currents = list(chCurrents.values())
+            print(currents)
         # time.sleep(0.2)
-    return currents
 
 
 def getData(q):
@@ -176,7 +176,7 @@ def readRecData(q1, q2, q3):
 
                     if objId == UAV_OBJ_ADC:
                         instADCId = int.from_bytes(dataBuff[4: 6], 'little')   # 获取ADC instId
-                        #print("instADCId=", instADCId)      
+                        # print("instADCId=", instADCId)      
 
                         if instADCId == 0 and adcVlist:
                             coilIndex += 1
@@ -185,14 +185,14 @@ def readRecData(q1, q2, q3):
                             adcVlist.clear()
 
                         for i in range(6, readLen, 2):
-                            adcV = int.from_bytes(dataBuff[i: i + 2], 'little') * 1e-6
+                            adcV = int.from_bytes(dataBuff[i: i + 2], 'little')
                             adcVlist.append(adcV)
 
-                        # if instADCId == 7:   # 特别针对5ms的情况
-                        #     coilIndex += 1
-                        #     q1.put([time.time(), adcVlist.copy()])
-                        #     #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))
-                        #     adcVlist.clear() 
+                        if instADCId == 15:   # 特别针对10ms的情况
+                            coilIndex += 1
+                            q1.put([time.time(), adcVlist.copy()])
+                            #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))
+                            adcVlist.clear() 
                                
                     elif objId == UAV_OBJ_GYRO:
                         gyro = struct.unpack('f'*3, dataBuff[6: 18])
@@ -283,8 +283,8 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
             now = adcPack[0]
             adcV = adcPack[1]
             adcVmean = np.array(adcV).mean()
-            # vpp = fftComp(adcV) * 2      # FFT
-            vpp = findPeakValley(adcV, 6e-6)
+            # vpp = fftComp(adcV) * 2e-6      # FFT
+            vpp = findPeakValley(adcV, 6) * 1e-6
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
@@ -370,15 +370,16 @@ def runRec():
     procReadRec.start()
     #time.sleep(1)
 
-    currents = multiprocessing.Array('f', [2] * 16)
-    # 启动发射端的命令
-    # 帧头帧尾：0xEB,0x90,          ,0xaa,0x55
-    # 软件使能1字节，间隔时间1字节，导通时间1字节，处理时间2字节：例如1000ms = 0x03e8，通道选择1字节，通道电流调节1字节，通道校准模式1字节
-    cmd = "EB 90 01 32 08 01 90 00 00 00 AA 55" if open else "EB 90 00 32 05 01 90 00 00 00 AA 55"
-    procReadSend = Process(target=runsend, args=(currents, cmd, True))
-    procReadSend.daemon = True
-    procReadSend.start()
+    # currents = multiprocessing.Array('f', [2] * 16)
+    # # 启动发射端的命令
+    # # 帧头帧尾：0xEB,0x90,          ,0xaa,0x55
+    # # 软件使能1字节，间隔时间1字节，导通时间1字节，处理时间2字节：例如1000ms = 0x03e8，通道选择1字节，通道电流调节1字节，通道校准模式1字节
+    # cmd = "EB 90 01 32 08 01 90 00 00 00 AA 55" if open else "EB 90 00 32 05 01 90 00 00 00 AA 55"
+    # procReadSend = Process(target=runsend, args=(currents, cmd, True))
+    # procReadSend.daemon = True
+    # procReadSend.start()
 
+    currents = [2.16, 2.17, 2.23, 2.33, 2.26, 2.23, 2.22, 2.33, 2.19, 2.31, 2.31, 2.28, 2.27, 2.36, 2.35, 2.27]
     plotRecData(q1, q2, q3, currents=currents, file=None)
 
 
