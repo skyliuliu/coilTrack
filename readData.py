@@ -188,7 +188,7 @@ def readRecData(q1, q2, q3):
                             adcV = int.from_bytes(dataBuff[i: i + 2], 'little')
                             adcVlist.append(adcV)
 
-                        if instADCId == 15:   # 特别针对10ms的情况
+                        if instADCId == 7:   # 特别针对5ms的情况
                             coilIndex += 1
                             q1.put([time.time(), adcVlist.copy()])
                             #print("t={:.3f}, adc_num={}, coili={}".format(time.time(), len(adcVlist), coilIndex%16))

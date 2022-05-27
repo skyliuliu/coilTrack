@@ -42,14 +42,14 @@ class Predictor:
 
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
-        self.m = self.coils.coilNum + 3
+        self.m = self.coils.coilNum + 1
 
         self.t0 = time.time()
         self.totalTime = 0
         self.compTime = 0
         self.iter = 0
 
-        self.T = self.tR(state)
+        #self.T = self.tR(state)
 
     def tR(self, state):
         '''
@@ -110,6 +110,26 @@ class Predictor:
         EA[-1] = 1000 * em2[-1]   # z正向
         return EA
 
+    def hhh(self, state):
+        """
+        基于θ和φ的线圈+IMU的观测方程
+        :param state: 预估的状态量 (n, )
+        :return: E+A 感应电压 [1e-6V] + 方向矢量[1] (m, )
+        """
+        theta, phi = state[3], state[4]
+        dArray0 = state[:3] - self.coils.coilArray
+        em2 = np.array([np.sin(phi) * np.sin(theta), np.cos(phi) * np.sin(theta), np.cos(theta)]).T
+
+        EZ = np.zeros(self.m)
+        for i, d in enumerate(dArray0):
+            EZ[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
+        
+        EZ[-1] = 1000 * np.cos(theta)   # z
+        # EZ[-3] = 1000 * np.sin(theta) * np.sin(phi)  # x
+        # EZ[-2] = 1000 * np.sin(theta) * np.cos(phi)  # y
+        return EZ
+
+
     def generateData(self, stateX, std):
         '''
         生成模拟数据
@@ -118,7 +138,7 @@ class Predictor:
         :return:
         '''
         TX = self.tR(stateX)
-        midData = self.hh(stateX)
+        midData = self.hhh(stateX)
         t = TX[:3, 3]
         ez = TX[2, :3]
 
@@ -141,7 +161,7 @@ class Predictor:
         :param measureData:  【np.array】观测值
         :return: 【np.array】观测值 - 预测值
         '''
-        eastData = self.hh(state)
+        eastData = self.hhh(state)
         return measureData - eastData
 
     def derive(self, param_index):
@@ -164,8 +184,8 @@ class Predictor:
             state1[param_index] += delta
             state2[param_index] -= delta
 
-        data_est_output1 = self.hh(state1)
-        data_est_output2 = self.hh(state2)
+        data_est_output1 = self.hhh(state1)
+        data_est_output2 = self.hhh(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
@@ -220,7 +240,7 @@ class Predictor:
                 Hessian_LM = A + u * np.eye(self.n)  # calculating Hessian matrix in LM
                 step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
                 if np.linalg.norm(step) <= eps_step:
-                    self.stateOut(t0, i, mse, 'threshold_step')
+                    self.stateOut22(t0, i, mse, 'threshold_step')
                     return self.state
 
                 if isinstance(self.state, se3):
@@ -243,9 +263,9 @@ class Predictor:
                     stop = (np.linalg.norm(g, ord=np.inf) <= eps_stop) or (mse <= eps_residual)
                     if stop:
                         if np.linalg.norm(g, ord=np.inf) <= eps_stop:
-                            self.stateOut(t0, i, mse, 'threshold_stop')
+                            self.stateOut22(t0, i, mse, 'threshold_stop')
                         if mse <= eps_residual:
-                            self.stateOut(t0, i, mse, 'threshold_residual')
+                            self.stateOut22(t0, i, mse, 'threshold_residual')
                         return self.state
 
                     else:
@@ -255,10 +275,10 @@ class Predictor:
                     v *= 2
 
             if i == maxIter:
-                self.stateOut(t0, i, mse, 'maxIter_step')
+                self.stateOut22(t0, i, mse, 'maxIter_step')
                 return self.state
 
-    def stateOut(self, t0, i, mse, printStr):
+    def stateOut2(self, t0, i, mse, printStr):
         '''
         输出算法的中间结果
         :param t0: 【float】 时间戳
@@ -278,6 +298,27 @@ class Predictor:
         t = np.round(T[:3, 3], 1)
         em = np.round(T[2, :3], 3)
         print('{}:\ni={}, t={}mm, em={}, compTime={:.3f}s, cost={:.3e}'.format(printStr, i, t, em, self.compTime, mse))
+
+    def stateOut22(self, t0, i, mse, printStr):
+        '''
+        输出算法的中间结果
+        :param t0: 【float】 时间戳
+        :param i: 【int】迭代步数
+        :param mse: 【float】残差
+        :return:
+        '''
+        self.compTime = time.time() - t0
+        self.totalTime = time.time() - self.t0
+        self.t0 = time.time()
+        self.iter = i
+        t = np.round(self.state[:3], 1)
+        theta = self.state[3] * 57.3
+        phi = self.state[4] * 57.3
+
+        if not self.printBool:
+            return
+
+        print('{}:\ni={}, t={}mm, theta={:.0f}, phi={:.0f}, compTime={:.3f}s, cost={:.3e}'.format(printStr, i, t, theta, phi, self.compTime, mse))
 
     def compErro(self, state, stateX):
         '''
@@ -466,7 +507,7 @@ def run():
     :return:
     '''
     qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-    state = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)
+    state = np.array([0, 0, 200, np.pi / 4, 0], dtype=float)
     state_se3 = se3(vector=np.array([0, 0, 0, 0, 0, 200]))
 
     # 读取接收端数据
@@ -482,6 +523,7 @@ def run():
 
     # 描绘3D轨迹
     track3D(state, qList=[qADC, qGyro, qAcc], tracker=pred)
+
 
 if __name__ == '__main__':
     run()

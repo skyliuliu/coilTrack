@@ -135,6 +135,16 @@ def parseState(state):
         euler = q2Euler(state.quaternion())
     return [pos, angle, uAxis, euler]
 
+def parseState2(state):
+    '''
+    从xyzθφ位姿状态中获取旋转矢量，并提取位置和姿态角
+    :param state: 【np.array】/【se3】位姿
+    :return: 【list】[pos, angle, uAxis, euler]
+    '''
+
+    pos = state[:3] * 0.1
+    euler = state[3: 5] * 57.3
+    return [pos, euler]
 
 def plotLM(residual_memory, us):
     '''
@@ -385,13 +395,13 @@ class Custom3DAxis(gl.GLAxisItem):
         # add X axis arrow
         arrowXData = gl.MeshData.cylinder(rows=10, cols=20, radius=[0.5, 0.], length=2)
         arrowX = gl.GLMeshItem(meshdata=arrowXData, color=(0, 0, 1, 0.6), shader='balloon', glOptions='opaque')
-        arrowX.rotate(90, 0, 1, 0)
+        # arrowX.rotate(90, 0, 1, 0)
         arrowX.translate(arrowXYZ, 0, 0)
         self.parent.addItem(arrowX)
         # add Y axis arrow
         arrowYData = gl.MeshData.cylinder(rows=10, cols=20, radius=[0.5, 0.], length=2)
         arrowY = gl.GLMeshItem(meshdata=arrowXData, color=(1, 0, 1, 0.6), shader='balloon', glOptions='opaque')
-        arrowY.rotate(270, 1, 0, 0)
+        # arrowY.rotate(270, 1, 0, 0)
         arrowY.translate(0, arrowXYZ, 0)
         self.parent.addItem(arrowY)
         # add Z axis arrow
@@ -462,7 +472,9 @@ def track3D(state, qList=None, tracker=None):
     # trajectory line
     pos0 = np.array([[0, 0, 0]]) * 0.1
 
-    pos, angle, uAxis, euler = parseState(state)
+    pos, euler = parseState2(state)
+    axisX = np.array([1, 0, 0])
+    axisZ = np.array([0, 0, 1])
     track0 = np.concatenate((pos0, pos.reshape(1, 3)))
     plt = gl.GLLinePlotItem(pos=track0, width=2, color=(1, 0, 0, 0.6))
     w.addItem(plt)
@@ -473,7 +485,9 @@ def track3D(state, qList=None, tracker=None):
     ArrowData = gl.MeshData.cylinder(rows=20, cols=20, radius=[0.5, 0], length=1.5)
     ArrowMesh = gl.GLMeshItem(meshdata=ArrowData, smooth=True, color=(1, 0, 0, 0.6), shader='balloon',
                               glOptions='opaque')
-    ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
+    #ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
+    ArrowMesh.rotate(euler[0], axisX[0], axisX[1], axisX[2])
+    ArrowMesh.rotate(euler[1], axisZ[0], axisZ[1], axisZ[2])
     w.addItem(ArrowMesh)
     # w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
     # .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
@@ -489,7 +503,7 @@ def track3D(state, qList=None, tracker=None):
     # add euler angles
     eulerDock = Dock("\n姿态角/\u00b0\n", size=(160, 10))
     eulerText = QtGui.QLabel()
-    eulerText.setText("pitch = {:.0f} \u00b1 {}\n\n roll = {:.0f} \u00b1 {}\n yaw = {:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0, euler[2], 0))
+    eulerText.setText("theta = {:.0f} \u00b1 {}\n\n phi = {:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0))
     eulerDock.addWidget(eulerText)
     area.addDock(eulerDock, 'bottom', posDock)
 
@@ -512,7 +526,7 @@ def track3D(state, qList=None, tracker=None):
     i = 1
     # 记录位置和姿态的历史值
     pts = pos.reshape(1, 3)
-    eulers = euler.reshape(1, 3)
+    eulers = euler.reshape(1, 2)
 
     z = []
     accData = []
@@ -536,15 +550,17 @@ def track3D(state, qList=None, tracker=None):
                     z.append(vm)
             if len(z) == 16:
                 if accData:
-                    for i in range(3):
-                        z.append(accData[i])
+                    # for i in range(3):
+                    #     z.append(accData[i])
+                    z.append(accData[2])
                     tracker.LM(z)
                     z.clear()
 
         # update position and orientation
-        pos, angle, uAxis, euler = parseState(tracker.state)
+        pos, euler = parseState2(tracker.state)
         pt = pos.reshape(1, 3)
-        et = euler.reshape(1, 3)
+        et = euler.reshape(1, 2)
+        
 
         if pts.size < 150:
             pts = np.concatenate((pts, pt))
@@ -559,18 +575,18 @@ def track3D(state, qList=None, tracker=None):
         stdPosz = pts[:, 2].std()
         stdPitch = eulers[:, 0].std()
         stdRoll = eulers[:, 1].std()
-        stdYaw = eulers[:, 2].std()
 
         # update gui
         ArrowMesh.resetTransform()
         sphereMesh.resetTransform()
-        ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
+        ArrowMesh.rotate(euler[0], axisX[0], axisX[1], axisX[2])
+        ArrowMesh.rotate(euler[1], axisZ[0], axisZ[1], axisZ[2])
         ArrowMesh.translate(*pos)
         sphereMesh.translate(*pos)
         
         # update state
         posText.setText(" x = {:.2f} \u00b1 {:.2f}\n\n y = {:.2f} \u00b1 {:.2f}\n\n z = {:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosz))
-        eulerText.setText(" pitch = {:.0f} \u00b1 {:.0f}\n\n roll = {:.0f} \u00b1 {:.0f}\n\n yaw = {:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll, euler[2], stdYaw))
+        eulerText.setText(" theta = {:.0f} \u00b1 {:.0f}\n\n phi = {:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll))
         timeText.setText(" total time = {:.3f}s\n compute time = {:.3f}s".format(tracker.totalTime, tracker.compTime))
         iterText.setText(" iter times = " + str(tracker.iter))
         i += 1
