@@ -118,7 +118,7 @@ class Predictor:
         """
         theta, phi = state[3], state[4]
         dArray0 = state[:3] - self.coils.coilArray
-        em2 = np.array([np.sin(phi) * np.sin(theta), np.cos(phi) * np.sin(theta), np.cos(theta)]).T
+        em2 = np.array([np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]).T
 
         EZ = np.zeros(self.m)
         for i, d in enumerate(dArray0):

@@ -579,7 +579,7 @@ def track3D(state, qList=None, tracker=None):
         # update gui
         ArrowMesh.resetTransform()
         sphereMesh.resetTransform()
-        ArrowMesh.rotate(euler[0], axisX[0], axisX[1], axisX[2])
+        ArrowMesh.rotate(euler[0], 0, 1, 0)
         ArrowMesh.rotate(euler[1], axisZ[0], axisZ[1], axisZ[2])
         ArrowMesh.translate(*pos)
         sphereMesh.translate(*pos)
