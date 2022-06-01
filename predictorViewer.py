@@ -544,7 +544,7 @@ def track3D(state, qList=None, tracker=None):
             if not qADC.empty():
                 adcPack = qADC.get()
                 adcV = adcPack[1]
-                vm = findPeakValley(adcV, 6) * 0.5
+                vm = findPeakValley(adcV, 6) * 0.5 * 3600 / 4095   # ADC采样数值整数/实际值=3.96/4095[V]，放大1000倍
                 # vm = fftComp(adcV)
                 if vm:
                     z.append(vm)
@@ -552,7 +552,7 @@ def track3D(state, qList=None, tracker=None):
                 if accData:
                     # for i in range(3):
                     #     z.append(accData[i])
-                    z.append(accData[2])
+                    z.append(accData[2] * 0.01)
                     tracker.LM(z)
                     z.clear()
 
@@ -566,8 +566,8 @@ def track3D(state, qList=None, tracker=None):
             pts = np.concatenate((pts, pt))
             eulers = np.concatenate((eulers, et))
         else:
-            pts = np.concatenate((pts[-50:, :], pt))
-            eulers = np.concatenate((eulers[-50:, :], et))
+            pts = np.concatenate((pts[-10:, :], pt))
+            eulers = np.concatenate((eulers[-10:, :], et))
         plt.setData(pos=pts)
 
         stdPosX = pts[:, 0].std()

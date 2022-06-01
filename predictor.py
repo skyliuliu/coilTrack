@@ -124,7 +124,7 @@ class Predictor:
         for i, d in enumerate(dArray0):
             EZ[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
         
-        EZ[-1] = 1000 * np.cos(theta)   # z
+        EZ[-1] = 10.24 * np.cos(theta)   # 加速度的单位为100mg
         # EZ[-3] = 1000 * np.sin(theta) * np.sin(phi)  # x
         # EZ[-2] = 1000 * np.sin(theta) * np.cos(phi)  # y
         return EZ

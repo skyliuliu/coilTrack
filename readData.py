@@ -284,7 +284,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
             adcV = adcPack[1]
             adcVmean = np.array(adcV).mean()
             # vpp = fftComp(adcV) * 2e-6      # FFT
-            vpp = findPeakValley(adcV, 6) * 1e-6
+            vpp = findPeakValley(adcV, 6) * 1e-6 * 3600 / 4095   # ADC采样数值整数/实际值=3.96/4095[V]，放大1000倍
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
