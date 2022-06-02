@@ -36,6 +36,8 @@
 ## 5. 使用方法
 #### 5.1 读取实时数据
    　　运行```readData.py```，出现UI界面后通过串口工具向发射端发送启动命令
+"![实时采集数据界面](https://incode.sibionics.com/magLoc/coiltrack/-/raw/main/pic/readData.PNG?inline=false)"
 
 #### 5.2 实时定位
    　　运行```predictor.py```，出现UI界面后通过串口工具向发射端发送启动命令
+"![定位程序界面](https://incode.sibionics.com/magLoc/coiltrack/-/raw/main/pic/track.png?inline=false)"
