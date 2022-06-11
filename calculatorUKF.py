@@ -30,25 +30,29 @@ class Tracker:
         :param state0: 【np.array】初始值 (n,)
         '''
         self.n = state0.size  # 预测量：x, y, z, θ, φ
-        self.dt = 0.01  # 时间间隔[s]
+        self.dt = 0.5  # 时间间隔[s]
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
-        self.m = CoilArray.coilNum + 1
+        self.m = CoilArray.coilNum + 2
     
         points = MerweScaledSigmaPoints(n=self.n, alpha=0.3, beta=2., kappa=3 - self.n)
-        self.ukf = UKF(dim_x=self.n, dim_z=self.coils.coilNum, dt=self.dt, points=points, fx=self.f, hx=self.hhh)
+        self.ukf = UKF(dim_x=self.n, dim_z=self.m, dt=self.dt, points=points, fx=self.f, hx=self.hhh)
         self.ukf.x = state0.copy()  # 初始值
+        self.state = self.ukf.x
+        self.totalTime = 0
+        self.compTime = 0
+        self.t0 = time.time()
+        self.iter = 1
 
         self.ukf.R *= 5
-        self.ukf.P = np.eye(self.n) * 10
-        for i in range(3, self.n):
-            self.ukf.P[i, i] = 0.01
-        self.ukf.Q = np.eye(self.n) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = v * dt
-        for i in range(3, self.n):
-            self.ukf.Q[i, i] = 0.01  # 四元数的过程误差
+        self.ukf.P *= 10
+        self.ukf.P[3, 3] = 1    # θ的初始协方差
+        self.ukf.P[4, 4] = 0.1    # φ的初始协方差
+
+        self.ukf.Q = np.eye(self.n) * 0.1 * self.dt  # 将速度作为过程噪声来源，Qi = v * dt
     
         self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-        self.em2 = q2R(self.ukf.x[3: self.n])[:, -1]  # 四元数下的接收线圈朝向
+
         # 球坐标系下的接收线圈朝向
         theta, phi = state0[3], state0[4]
         self.em2 = np.array([np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]).T
@@ -150,9 +154,10 @@ class Tracker:
         for i, d in enumerate(dArray0):
             EZ[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
 
-        EZ[-1] = 10.24 * np.cos(theta)  # 加速度的单位为100mg
-        # EZ[-3] = 1000 * np.sin(theta) * np.sin(phi)  # x
-        # EZ[-2] = 1000 * np.sin(theta) * np.cos(phi)  # y
+       # 加速度的单位为100mg
+        EZ[-1] = 10.24 * np.cos(theta)   # z
+        EZ[-2] = 10.24 * np.sin(theta)   # sqrt(x^2 + y^2)
+
         return EZ
 
     def solve(self, z):
@@ -163,10 +168,14 @@ class Tracker:
         '''
         zz = np.hstack(z[:])
         # 附上时间戳
-        self.t0 = datetime.datetime.now()
+        t0 = time.time()
         # 开始预测和更新
         self.ukf.predict()
         self.ukf.update(zz)
+        self.state = self.ukf.x
+        self.totalTime = time.time() - self.t0
+        self.compTime = time.time() - t0
+        self.t0 = time.time()
 
         if self.printBool:
             self.statePrint()
@@ -178,11 +187,10 @@ class Tracker:
         theta, phi = self.ukf.x[3], self.ukf.x[4]
         em2 = np.array([np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]).T
 
-        timeCost = (datetime.datetime.now() - self.t0).total_seconds()
         Estate = self.h(self.ukf.x)     # 计算每个状态对应的感应电压
 
-        print('pos={}mm, emz={}, Emax={:.2f}, Emin={:.2f}, timeCost={:.3f}s'.format(
-            self.pos, self.em2, max(abs(Estate)), min(abs(Estate)), timeCost))
+        print('pos={}mm, emz={}, Emax={:.2f}, Emin={:.2f}, totalTime={:.3f}s'.format(
+            self.pos, em2, max(abs(Estate)), min(abs(Estate)), self.totalTime))
 
 
 def sim(sensor_std, sensor_err, plotType, state0, plotBool, printBool, state=None, maxIter=50):

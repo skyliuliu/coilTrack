@@ -437,6 +437,7 @@ def track3D(state, qList=None, tracker=None):
     '''
     描绘目标状态的3d轨迹
     :param state: 【np.array】目标的状态
+    :param qList: 
     :return:
     '''
     app = QtGui.QApplication([])
@@ -552,6 +553,7 @@ def track3D(state, qList=None, tracker=None):
                 if accData:
                     # for i in range(3):
                     #     z.append(accData[i])
+                    z.append(np.sqrt(accData[0] * accData[0] + accData[1] * accData[1]) * 0.01)
                     z.append(accData[2] * 0.01)
                     tracker.solve(z)
                     z.clear()

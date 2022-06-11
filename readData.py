@@ -222,7 +222,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     pMeaVSsim.setLabel('left', '电压', units='uV')
     pMeaVSsim.setLabel('bottom', '线圈编号', units='1')
     curveMea = pMeaVSsim.plot(x=np.arange(17), y=np.arange(16),stepMode=True, fillLevel=0, fillOutline=True, brush='b', name='实测')
-    curveSim = pMeaVSsim.plot(pen='g', name='理论')
+    curveSim = pMeaVSsim.plot(pen='g', name='理论')  
     win.nextRow()
 
     pGyro = win.addPlot(title='gyroscope', axisItems = {'bottom': pg.DateAxisItem()}, col=0)
@@ -259,7 +259,7 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
     iVS = 0
 
     # sim data
-    state = np.array([0, 0, 195 + 7.5, 1, 0, 0, 0])  # 真实值
+    state = np.array([0, 0, 177, 1, 0, 0, 0])  # 真实值
     coils = CoilArray(np.array(currents))
     VppSim = coils.h(state) * 2
 
@@ -283,8 +283,8 @@ def plotRecData(qADC, qGyro, qAcc, currents, file=None):
             now = adcPack[0]
             adcV = adcPack[1]
             adcVmean = np.array(adcV).mean()
-            # vpp = fftComp(adcV) * 2e-6      # FFT
-            vpp = findPeakValley(adcV, 6) * 1e-6 * 3600 / 4095   # ADC采样数值整数/实际值=3.96/4095[V]，放大1000倍
+            # vpp = fftComp(adcV) * 2e-6 * 3600 / 4095      # FFT
+            vpp = findPeakValley(adcV, 6) * 1e-6 * 3600 / 4095   # ADC采样比值：实际值/数值整数=3.6/4095[V]，放大1000倍
             if vpp:
                 iVS += 1
                 xVS.put(iVS)
