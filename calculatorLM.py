@@ -130,7 +130,7 @@ class Tracker:
         residual = output_data - data_est_output
         return residual
 
-    def LM(self, output_data):
+    def solve(self, output_data):
         """
         Levenberg–Marquardt优化算法的主体
         :param output_data: 观测量 (m, )
@@ -264,7 +264,7 @@ class Tracker:
         for i in range(1):
             # run
             output_data = self.generate_data(states[:7], sensor_std, sensor_err)
-            self.LM(output_data)
+            self.solve(output_data)
 
             if plotBool:
                 # plot pos and em
@@ -305,7 +305,7 @@ class Tracker:
         for i in range(self.m):
             measureData[i] = eval(readData[i])
     
-        self.LM(measureData)
+        self.solve(measureData)
     
         if plotBool:
             # plot pos and em
@@ -375,7 +375,7 @@ class Tracker:
 
         # 先对初始状态进行预估
         E0sim = self.generate_data(sensor_std)
-        result = self.LM(E0sim)
+        result = self.solve(E0sim)
         resultList.append(result)
 
         # 对轨迹线上的其它点进行预估
@@ -384,7 +384,7 @@ class Tracker:
             state = line[i] + q
             Esim = self.generate_data(state, sensor_std)
             state2 = np.concatenate((result, [0, 0]))
-            result = self.LM(Esim)
+            result = self.solve(Esim)
             resultList.append(result)
 
         if plotBool:

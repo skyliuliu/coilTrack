@@ -553,7 +553,7 @@ def track3D(state, qList=None, tracker=None):
                     # for i in range(3):
                     #     z.append(accData[i])
                     z.append(accData[2] * 0.01)
-                    tracker.LM(z)
+                    tracker.solve(z)
                     z.clear()
 
         # update position and orientation
