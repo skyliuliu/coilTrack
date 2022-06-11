@@ -551,8 +551,6 @@ def track3D(state, qList=None, tracker=None):
                     z.append(vm)
             if len(z) == 16:
                 if accData:
-                    # for i in range(3):
-                    #     z.append(accData[i])
                     z.append(np.sqrt(accData[0] * accData[0] + accData[1] * accData[1]) * 0.01)
                     z.append(accData[2] * 0.01)
                     tracker.solve(z)

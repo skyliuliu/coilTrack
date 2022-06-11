@@ -44,12 +44,15 @@ class Tracker:
         self.t0 = time.time()
         self.iter = 1
 
-        self.ukf.R *= 5
-        self.ukf.P *= 10
-        self.ukf.P[3, 3] = 1    # θ的初始协方差
-        self.ukf.P[4, 4] = 0.1    # φ的初始协方差
+        self.ukf.R *= 5   # 观测值的协方差
 
-        self.ukf.Q = np.eye(self.n) * 0.1 * self.dt  # 将速度作为过程噪声来源，Qi = v * dt
+        self.ukf.P *= 1000   # 初始位置x,y,z的协方差
+        self.ukf.P[3, 3] = 1    # θ的初始协方差
+        self.ukf.P[4, 4] = 0.4    # φ的初始协方差
+
+        self.ukf.Q = np.eye(self.n) * 1 * self.dt  # 将速度作为过程噪声来源，Qi = v * dt
+        self.ukf.Q[3, 3] = 0.5 * self.dt   # θ轴转动噪声
+        self.ukf.Q[4, 4] = 0.5 * self.dt   # φ轴转动噪声
     
         self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
 
@@ -447,7 +450,7 @@ def runReal():
     :return:
     '''
     qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-    state = np.array([0, 0, 200, np.pi / 4, 0], dtype=float)
+    state = np.array([0, 0, 200, np.pi / 4, -np.pi], dtype=float)
 
     # 读取接收端数据
     procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
