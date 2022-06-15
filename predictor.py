@@ -6,6 +6,7 @@ Email: Nicke_liu@163.com
 DateTime: 2022/3/3 19:50
 desc: 实现定位算法的类，依据状态量的维度有不同的形式
 '''
+import csv
 import time
 from queue import Queue
 from multiprocessing.dummy import Process
@@ -21,11 +22,11 @@ from readData import readRecData
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
-np.set_printoptions(suppress=True)
+np.set_printoptions(suppress=True, precision=2)
 
 
 class Predictor:
-    printBool = False
+    printBool = True
 
     def __init__(self, state, currents):
         '''
@@ -42,7 +43,7 @@ class Predictor:
 
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
-        self.m = self.coils.coilNum + 2
+        self.m = self.coils.coilNum + 3
 
         self.t0 = time.time()
         self.totalTime = 0
@@ -139,7 +140,7 @@ class Predictor:
         :return:
         '''
         TX = self.tR(stateX)
-        midData = self.hhh(stateX)
+        midData = self.h(stateX)
         t = TX[:3, 3]
         ez = TX[2, :3]
 
@@ -346,10 +347,10 @@ class Predictor:
         :return:
         '''
         measureData = self.generateData(std=sensor_std, stateX=stateX)
-        self.LM(measureData)
-
-        err_pos, err_em = self.compErro(self.state, stateX)
-        return (err_pos, err_em)
+        # self.LM(measureData)
+        #
+        # err_pos, err_em = self.compErro(self.state, stateX)
+        return
 
     def measureDataPredictor(self, state0):
         '''
@@ -423,7 +424,7 @@ class Predictor:
         模拟某条轨迹下的定位效果
         :param shape: 【string】形状
         :param pointsNum: 【int】线上的点数
-        :param sensor_std: 【float】传感器噪声，此处指感应电压的采样噪声[μV]
+        :param sensor_std: 【float】传感器噪声
         :param plotBool: 【bool】是否绘图
         :param maxIter: 【int】最大迭代次数
         :return:
@@ -441,7 +442,7 @@ class Predictor:
 
         # 先对初始状态进行预估
         E0sim = self.generateData(stateX=state, std=sensor_std)
-        self.LM(E0sim)
+        # self.LM(E0sim)
         resultList.append(self.state.copy())
 
         # 对轨迹线上的其它点进行预估
@@ -449,12 +450,64 @@ class Predictor:
             print('--------point:{}---------'.format(i))
             state = line[i] + q
             Esim = self.generateData(stateX=state, std=sensor_std)
-            self.LM(Esim)
+            # self.LM(Esim)
             resultList.append(self.state.copy())
 
         if plotBool:
             stateMP = np.asarray(resultList)
             plotTrajectory(stateLine, stateMP, sensor_std)
+
+    def genTranData(self, sensor_std, shape="circle", velocity=5):
+        '''
+        生成动态轨迹的模拟数据
+        :param shape: 【string】形状
+        :param velocity: 【float】速度[m/s]
+        :param sensor_std: 【float】传感器噪声
+        :return:
+        '''
+        dt = 0.05   # 采样间隔时间[ms]
+        ym = 100   # 位移幅值[mm]
+
+        if shape == "sin":
+            start, end = -100, 100  # x轴起点和终点
+            pointsNum = int((end - start) / dt / velocity)
+            line_x = np.linspace(start, end, pointsNum)
+            v_ex = np.abs(np.sin(2 * np.pi * (line_x - start) / pointsNum))
+            v_ey = np.cos(2 * np.pi * (line_x - start) / pointsNum)
+            line_y = v_ey * ym
+            line = [(x, y, 300) for (x, y) in zip(line_x, line_y)]
+            v = list(zip(v_ex, v_ey))
+
+        elif shape == "circle":
+            pointsNum = int(10 * np.pi * ym / dt / velocity)
+            acc = velocity * velocity / ym
+            angularVel = 2 * np.pi / dt
+
+            angle = np.linspace(0, 2 * np.pi, pointsNum)
+            line_x = np.sin(angle) * ym
+            line_y = np.cos(angle) * ym
+            line = [(x, y, 300) for (x, y) in zip(line_x, line_y)]
+            v_ex = np.cos(angle)
+            v_ey = -np.sin(angle)
+            v = [(v_ex * velocity, v_ey * velocity, 0) for (v_ex, v_ey) in zip(v_ex, v_ey)]
+            a_ex = -np.sin(angle)
+            a_ey = -np.cos(angle)
+            a = [(a_ex * acc, a_ey * velocity, 0) for (a_ex, a_ey) in zip(a_ex, a_ey)]
+            q = [(np.cos(0.5 * ang), 0, 0, np.sin(0.5 * ang)) for ang in angle]
+            w = (0, 0, angularVel)
+
+            now = time.time()
+
+            with open('simData20220614.csv', 'w', newline='') as f:
+                fcsv = csv.writer(f)
+                fcsv.writerow(('timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)', 'gyroscope(deg/s)'))
+                for i in range(pointsNum):
+                    stateX = np.concatenate((line[i], q[i]))
+                    Esim = self.generateData(stateX=stateX, std=0)[i % 16]
+                    fcsv.writerow((now + dt * i, line[i], q[i], v[i], i % 16, Esim, a[i], w))
+        else:
+            raise TypeError("shape is not right!!!")
+
 
     def simErrDistributed(self, contourBar, sensor_std=0.01, pos_or_ori=0):
         '''
@@ -486,7 +539,7 @@ def sim():
     :return:
     '''
     state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)  # 初始值
-    states = np.array([3.6, -147.7, 162.7, 0.81008725, 0.58584571, 0.00421135, 0.02292847], dtype=float)  # 真实值
+    states = np.array([30, -10, 260, 1, 0, 0, 0], dtype=float)  # 真实值
     # states = np.array([-50, 0, 200, 1, 0, 0, 0], dtype=float)
 
     state = se3(vector=np.array([0, 0, 0, 0, 0, 300]))
@@ -494,7 +547,7 @@ def sim():
 
     pred = Predictor(state=state0, currents=[2] * 16)
 
-    pred.sim(sensor_std=0, stateX=states)
+    pred.genTranData(sensor_std=0.02)
 
     #pred.simScipy(stateX=states, sensor_std=0.02)
 
@@ -527,4 +580,4 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    sim()
