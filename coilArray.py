@@ -193,3 +193,6 @@ if __name__ == '__main__':
     vm = coils.h(state)
     print('vm(uV):\n', np.round(vm, 0))
 
+    A = 4 * np.pi * 1e-7 * coils.n1 * coils.n2 * coils.S1 * coils.S2 * coils.freq * 2
+    print('A=', A)
+

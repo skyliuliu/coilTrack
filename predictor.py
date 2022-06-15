@@ -498,13 +498,15 @@ class Predictor:
 
             now = time.time()
 
-            with open('simData20220614.csv', 'w', newline='') as f:
+            with open('.\data\simData20220615.csv', 'w', newline='') as f:
                 fcsv = csv.writer(f)
                 fcsv.writerow(('timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)', 'gyroscope(deg/s)'))
                 for i in range(pointsNum):
                     stateX = np.concatenate((line[i], q[i]))
                     Esim = self.generateData(stateX=stateX, std=0)[i % 16]
-                    fcsv.writerow((now + dt * i, line[i], q[i], v[i], i % 16, Esim, a[i], w))
+                    ai_np = q2R(q[i])[:3, 2] * 9800 + np.array(a[i])
+                    ai = tuple(_ for _ in ai_np)
+                    fcsv.writerow((now + dt * i, line[i], q[i], v[i], i % 16, Esim, ai, w))
         else:
             raise TypeError("shape is not right!!!")
 
