@@ -22,9 +22,9 @@
 
 根据磁偶极矩公式，发射线圈在接收线圈位置产生的磁感应强度为：
 
-$$
+$
 \vec{B}=\frac{\mu_0m}{4\pi r^3}[3(\vec{e_r} \cdot \vec{e_m})\vec{e_r}-\vec{e_m}]
-$$
+$
 
 ## 2. 硬件
 
@@ -99,9 +99,9 @@ $$
 | Lie.py             | 李代数的实现                                 |
 | se3LM.py           | 基于李代数+LM算法实现的定位方法              |
 | predictor.py       | 定位程序的主文件，calculatorLM + se3LM的集成 |
-| data.csv           | 采集的时域数据                               |
-| measureData.csv    | 每个线圈产生的信号幅值                       |
 | requirements.txt   | 依赖包及版本号                               |
+| pic/               | 保存图片信息 |
+| data/              | 保存仿真和实际运行的数据 |
 
 ## 4. 软件安装方法
 
@@ -115,10 +115,10 @@ $$
 #### 5.1 读取实时数据
 
 &emsp;&emsp;运行```readData.py```，出现UI界面后通过串口工具向发射端发送启动命令
-"![实时采集数据界面](https://incode.sibionics.com/magLoc/coiltrack/-/raw/main/pic/readData.PNG?inline=false)"
+![实时采集数据界面](./pic/readData.PNG)
 
 #### 5.2 实时定位
 
-&emsp;&emsp;运行```predictor.py```，出现UI界面后通过串口工具向发射端发送启动命令
-"![定位程序界面](https://incode.sibionics.com/magLoc/coiltrack/-/raw/main/pic/track.png?inline=false)"
+&emsp;&emsp;运行```calculatorUKF.py```，出现UI界面后通过串口工具向发射端发送启动命令
+![定位程序界面](./pic/track.png)
 
