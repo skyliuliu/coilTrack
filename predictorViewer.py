@@ -169,28 +169,27 @@ def plotLM(residual_memory, us):
 
 # plt.axis('auto')   # 坐标轴自动缩放
 
-def plotP(predictor, state, index, plotType):
+def plotP(predictor, stateX, index, plotType):
     '''
     描绘UKF算法中误差协方差yz分量的变化过程
     :param state0: 【np.array】预测状态 （7，）
-    :param state: 【np.array】真实状态 （7，）
+    :param stateX: 【np.array】真实状态 （7，）
     :param index: 【int】算法的迭代步数
     :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
     :return:
     '''
+    scalePos = 1
+    scaleEm2 = 10
     x, y = plotType
-    state_copy = state.copy()  # 浅拷贝真实值，因为后面会修改state
-    xtruth = state_copy[:3]  # 获取坐标真实值
-    mtruth = q2R(state_copy[3: 7])[:, -1]  # 获取姿态真实值，并转换为z方向的矢量
+    xtruth, mtruth = predictor.parseState(stateX)  # 获取真实值
 
-    pos, q = predictor.ukf.x[:3].copy(), predictor.ukf.x[3: 7]  # 获取预测值，浅拷贝坐标值
-    em = q2R(q)[:, -1]
+    pos, em2 = predictor.parseState(predictor.ukf.x)  # 获取预测值
     if plotType == (0, 1):
         plt.ylim(-0.2, 0.4)
         plt.axis('equal')  # 坐标轴按照等比例绘图
     elif plotType == (1, 2):
-        xtruth[1] += index * 0.1
-        pos[1] += index * 0.1
+        xtruth[1] += index * scalePos
+        pos[1] += index * scalePos
     else:
         raise Exception("invalid plotType")
 
@@ -201,10 +200,10 @@ def plotP(predictor, state, index, plotType):
     plt.text(xtruth[x], xtruth[y], int(index), fontsize=9)
 
     # 添加磁矩方向箭头
-    scale = 0.05
-    plt.annotate(text='', xy=(pos[x] + em[x] * scale, pos[y] + em[y] * scale), xytext=(pos[x], pos[y]),
+
+    plt.annotate(text='', xy=(pos[x] + em2[x] * scaleEm2, pos[y] + em2[y] * scaleEm2), xytext=(pos[x], pos[y]),
                  color="blue", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="b"))
-    plt.annotate(text='', xy=(xtruth[x] + mtruth[x] * scale, xtruth[y] + mtruth[y] * scale),
+    plt.annotate(text='', xy=(xtruth[x] + mtruth[x] * scalePos, xtruth[y] + mtruth[y] * scalePos),
                  xytext=(xtruth[x], xtruth[y]),
                  color="red", weight="bold", arrowprops=dict(arrowstyle="->", connectionstyle="arc3", color="r"))
 
@@ -288,7 +287,7 @@ def plotErr(x, y, z, contourBar, titleName):
     plt.clabel(cntr, inline_spacing=1, fmt='%.2f', fontsize=8, colors='black')     # 标识等高线的数值
     plt.show()
 
-def plotTrajectory(stateLine, stateMP, sensor_std):
+def plotTrajectory(stateLine, stateMP, sensorStatus):
     '''
     描绘轨迹预估图
     :param stateLine: 【np.array】真实状态的轨迹
@@ -296,7 +295,7 @@ def plotTrajectory(stateLine, stateMP, sensor_std):
     :param sensor_std: 【float】传感器噪声，此处指感应电压的采样噪声[μV]
     :return:
     '''
-    plt.title('sensor_std={}'.format(sensor_std))
+    plt.title('sensor_std={}'.format(sensorStatus))
     plt.axis('equal')  # 坐标轴按照等比例绘图
     plt.gca().grid(b=True)
     plt.xlabel('x/mm')

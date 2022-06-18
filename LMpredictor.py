@@ -1,11 +1,11 @@
 # coding=utf-8
 # /usr/bin/env python3
-'''
+"""
 Author: Liu Liu
 Email: Nicke_liu@163.com
 DateTime: 2022/3/3 19:50
 desc: 实现定位算法的类，依据状态量的维度有不同的形式
-'''
+"""
 import csv
 import time
 from queue import Queue
@@ -14,7 +14,6 @@ from multiprocessing.dummy import Process
 import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
 
-from calculatorUKF import trajectoryLine
 from coilArray import CoilArray
 from predictorViewer import q2R, plotErr, plotTrajectory, track3D
 from Lie import *
@@ -28,11 +27,11 @@ np.set_printoptions(suppress=True, precision=2)
 class Predictor:
     printBool = True
 
-    def __init__(self, state, currents):
-        '''
+    def __init__(self, currents, state):
+        """
         初始化定位类
         :param state: 【np.array】/【se3】初始位姿
-        '''
+        """
         self.state = state
         if isinstance(state, np.ndarray):
             self.n = len(state)
@@ -43,20 +42,21 @@ class Predictor:
 
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
-        self.m = self.coils.coilNum + 3
+        self.m = self.coils.coilNum + 2
 
         self.t0 = time.time()
         self.totalTime = 0
         self.compTime = 0
         self.iter = 0
 
-        #self.T = self.tR(state)
+        # self.T = self.tR(state)
 
     def tR(self, state):
-        '''
+        """
         从状态量解析出位移t和旋转矩阵R，组成变换矩阵
+        :param state: 【np.array】状态量 (n,)
         :return: 【np.array】变换矩阵 (4, 4)
-        '''
+        """
         T = np.eye(4)
         if self.n == 6:
             t = state.exp().matrix()[:3, 3]
@@ -69,76 +69,60 @@ class Predictor:
 
         T[:3, :3] = R
         T[:3, 3] = t
-        return  T
+        return T
+
+    def parseState(self, state):
+        """
+        从状态量中提取目标的位置和朝向
+        :return: 【np.array】位置和朝向 (6,)
+        """
+        if self.n == 5:
+            pos = state[:3]
+            theta, phi = state[3], state[4]
+            em2 = np.array([np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]).T
+        elif self.n == 6:
+            pos = state.exp().matrix()[:3, 3]
+            em2 = state.exp().matrix()[:3, 2]
+        elif self.n == 7:
+            pos = state[:3]
+            em2 = q2R(state[3: 7])[:, 2]
+        else:
+            raise ValueError("状态量输入错误")
+        return pos, em2
 
     def h(self, state):
-        '''
-        纯线圈的观测方程
-        :param state: 预估的状态量 (n, )
-        :return: E 感应电压 [1e-6V] (m, )
-        '''
-        T = self.tR(state)
-        dArray0 = T[:3, 3] - self.coils.coilArray
-        em2 = T[:3, :3][:3, 2]
-
-        E = np.zeros(self.m)
-        for i, d in enumerate(dArray0):
-            E[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
-        # 正交线圈
-        # E = np.zeros(self.m)
-        # for i, d in enumerate(dArray0):
-        #     E[3*i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1x, em2=em2, ii=self.currents[i])
-        #     E[3*i + 1] = self.coils.inducedVolatage(d=d, em1=self.coils.em1y, em2=em2, ii=self.currents[i])
-        #     E[3*i + 2] = self.coils.inducedVolatage(d=d, em1=self.coils.em1z, em2=em2, ii=self.currents[i])
-        return E
-
-    def hh(self, state):
         """
-        线圈+IMU的观测方程
+        观测方程
         :param state: 预估的状态量 (n, )
         :return: E+A 感应电压 [1e-6V] + 方向矢量[1] (m, )
         """
-        T = self.tR(state)
-        dArray0 = T[:3, 3] - self.coils.coilArray
-        em2 = T[:3, :3][:3, 2]
+        pos, em2 = self.parseState(state)
+        dArray0 = pos - self.coils.coilArray
 
         EA = np.zeros(self.m)
         for i, d in enumerate(dArray0):
             EA[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
 
-        EA[-3] = -1000 * em2[-3]  # x反向
-        EA[-2] = -1000 * em2[-2]  # y反向
-        EA[-1] = 1000 * em2[-1]   # z正向
+        if self.m == CoilArray.coilNum:  # 纯线圈
+            return EA
+        elif self.m == CoilArray.coilNum + 2:  # 基于θ和φ的线圈+IMU
+            EA[-1] = 10.24 * np.cos(state[3])
+            EA[-2] = 10.24 * np.sin(state[4])
+        elif self.m == CoilArray.coilNum + 3:  # 线圈+加速度计
+            EA[-3] = 10 * em2[-3]  # x方向
+            EA[-2] = 10 * em2[-2]  # y方向
+            EA[-1] = 10 * em2[-1]  # z方向
+        else:
+            raise ValueError("观测量输入错误")
         return EA
 
-    def hhh(self, state):
-        """
-        基于θ和φ的线圈+IMU的观测方程
-        :param state: 预估的状态量 (n, )
-        :return: E+A 感应电压 [1e-6V] + 方向矢量[1] (m, )
-        """
-        theta, phi = state[3], state[4]
-        dArray0 = state[:3] - self.coils.coilArray
-        em2 = np.array([np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]).T
-
-        EZ = np.zeros(self.m)
-        for i, d in enumerate(dArray0):
-            EZ[i] = self.coils.inducedVolatage(d=d, em1=self.coils.em1, em2=em2, ii=self.currents[i])
-        
-        # 加速度的单位为100mg
-        EZ[-1] = 10.24 * np.cos(theta)   # z
-        EZ[-2] = 10.24 * np.sin(theta)   # sqrt(x^2 + y^2)
-
-        return EZ
-
-
     def generateData(self, stateX, std):
-        '''
+        """
         生成模拟数据
         :param stateX: 【np.array】/【se3】真实位姿
         :param std: 【float】传感器输出值的标准差/误差比
         :return:
-        '''
+        """
         TX = self.tR(stateX)
         midData = self.h(stateX)
         t = TX[:3, 3]
@@ -146,7 +130,7 @@ class Predictor:
 
         simData = np.zeros(self.m)
         for j in range(self.m):
-            #simData[j] = np.random.normal(midData[j], std, 1)
+            # simData[j] = np.random.normal(midData[j], std, 1)
             simData[j] = midData[j] * (1 + (-1) ** j * std)
             # simData[j] = midData[j] + (-1) ** j * std
 
@@ -157,13 +141,13 @@ class Predictor:
         return simData
 
     def residual(self, state, measureData):
-        '''
+        """
         计算残差
         :param state: 【np.array】/【se3】预测位姿
         :param measureData:  【np.array】观测值
         :return: 【np.array】观测值 - 预测值
-        '''
-        eastData = self.hhh(state)
+        """
+        eastData = self.h(state)
         return measureData - eastData
 
     def derive(self, param_index):
@@ -186,15 +170,15 @@ class Predictor:
             state1[param_index] += delta
             state2[param_index] -= delta
 
-        data_est_output1 = self.hhh(state1)
-        data_est_output2 = self.hhh(state2)
+        data_est_output1 = self.h(state1)
+        data_est_output2 = self.h(state2)
         return 0.5 * (data_est_output1 - data_est_output2) / delta
 
     def jacobian(self):
-        '''
+        """
         计算预估状态的雅可比矩阵
         :return: 【np.array (m, n)】雅可比矩阵
-        '''
+        """
         J = np.zeros((self.m, self.n))
         for pi in range(self.n):
             J[:, pi] = self.derive(pi)
@@ -232,21 +216,20 @@ class Predictor:
         u = self.get_init_u(A, tao)  # set the init u
         # u = 100
         v = 2
-        rou = 0
         mse = 0
 
         for i in range(maxIter):
             i += 1
             while True:
-                
+
                 Hessian_LM = A + u * np.eye(self.n)  # calculating Hessian matrix in LM
                 step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
                 if np.linalg.norm(step) <= eps_step:
-                    self.stateOut22(t0, i, mse, 'threshold_step')
+                    self.stateOut(t0, i, mse, 'threshold_step')
                     return self.state
 
                 if isinstance(self.state, se3):
-                    newState = se3(vector=self.state.vector() + step)   # 先将se3转换成数组相加，再变回李代数，这样才符合LM算法流程
+                    newState = se3(vector=self.state.vector() + step)  # 先将se3转换成数组相加，再变回李代数，这样才符合LM算法流程
                 else:
                     newState = self.state + step
                 newRes = self.residual(newState, measureData)
@@ -265,9 +248,9 @@ class Predictor:
                     stop = (np.linalg.norm(g, ord=np.inf) <= eps_stop) or (mse <= eps_residual)
                     if stop:
                         if np.linalg.norm(g, ord=np.inf) <= eps_stop:
-                            self.stateOut22(t0, i, mse, 'threshold_stop')
+                            self.stateOut(t0, i, mse, 'threshold_stop')
                         if mse <= eps_residual:
-                            self.stateOut22(t0, i, mse, 'threshold_residual')
+                            self.stateOut(t0, i, mse, 'threshold_residual')
                         return self.state
 
                     else:
@@ -277,87 +260,66 @@ class Predictor:
                     v *= 2
 
             if i == maxIter:
-                self.stateOut22(t0, i, mse, 'maxIter_step')
+                self.stateOut(t0, i, mse, 'maxIter_step')
                 return self.state
 
-    def stateOut2(self, t0, i, mse, printStr):
-        '''
+    def stateOut(self, t0, i, mse, printStr):
+        """
         输出算法的中间结果
+        :param printStr: 【string】终止提示语
         :param t0: 【float】 时间戳
         :param i: 【int】迭代步数
         :param mse: 【float】残差
         :return:
-        '''
+        """
         self.compTime = time.time() - t0
         self.totalTime = time.time() - self.t0
         self.t0 = time.time()
         self.iter = i
+        pos, em2 = self.parseState(self.state)
 
         if not self.printBool:
             return
 
-        T = self.tR(self.state)
-        t = np.round(T[:3, 3], 1)
-        em = np.round(T[2, :3], 3)
-        print('{}:\ni={}, t={}mm, em={}, compTime={:.3f}s, cost={:.3e}'.format(printStr, i, t, em, self.compTime, mse))
-
-    def stateOut22(self, t0, i, mse, printStr):
-        '''
-        输出算法的中间结果
-        :param t0: 【float】 时间戳
-        :param i: 【int】迭代步数
-        :param mse: 【float】残差
-        :return:
-        '''
-        self.compTime = time.time() - t0
-        self.totalTime = time.time() - self.t0
-        self.t0 = time.time()
-        self.iter = i
-        t = np.round(self.state[:3], 1)
-        theta = self.state[3] * 57.3
-        phi = self.state[4] * 57.3
-
-        if not self.printBool:
-            return
-
-        print('{}:\ni={}, t={}mm, theta={:.0f}, phi={:.0f}, compTime={:.3f}s, cost={:.3e}'.format(printStr, i, t, theta, phi, self.compTime, mse))
+        print('{}:\ni={}, t={}mm, em2={}, compTime={:.3f}s, cost={:.3e}'.format(printStr, i, pos, em2, self.compTime,
+                                                                                mse))
 
     def compErro(self, state, stateX):
-        '''
+        """
         计算预测结果与真实结果之间的相对误差
         :param state: 【np.array】/【se3】预测位姿
         :param stateX: 【np.array】/【se3】真实位姿
         :return:
-        '''
+        """
         T = self.tR(state)
         t = T[:3, 3]
         ez = T[2, :3]
         TX = self.tR(stateX)
-        err_pos = np.linalg.norm(T[:3, 3] - TX[:3, 3])   # 位移之差的模
-        err_em = np.arccos(np.dot(ez, TX[2, :3]) / np.linalg.norm(ez) / np.linalg.norm(TX[2, :3])) * 57.3   # 方向矢量形成的夹角
-        print('\nt={}mm, ez={}: err_t={:.0f}mm, err_em={:.1f}deg'.format(np.round(t, 1), np.round(ez, 3), err_pos, err_em))
+        err_pos = np.linalg.norm(T[:3, 3] - TX[:3, 3])  # 位移之差的模
+        err_em = np.arccos(np.dot(ez, TX[2, :3]) / np.linalg.norm(ez) / np.linalg.norm(TX[2, :3])) * 57.3  # 方向矢量形成的夹角
+        print('\nt={}mm, ez={}: err_t={:.0f}mm, err_em={:.1f}deg'.format(np.round(t, 1), np.round(ez, 3), err_pos,
+                                                                         err_em))
 
-        return (err_pos, err_em)
+        return err_pos, err_em
 
     def sim(self, sensor_std, stateX):
-        '''
+        """
         :param sensor_std: 【float】sensor的噪声标准差[μV]或者误差百分比
         :param stateX: 【np.array】/【se3】真实位姿
         使用模拟的观测值验证算法的准确性
         :return:
-        '''
+        """
         measureData = self.generateData(std=sensor_std, stateX=stateX)
         # self.LM(measureData)
         #
         # err_pos, err_em = self.compErro(self.state, stateX)
         return
 
-    def measureDataPredictor(self, state0):
-        '''
+    def measureDataPredictor(self):
+        """
         使用实测结果估计位姿
-        :param state0: 【np.array】/【se3】初始位姿
         :return:
-        '''
+        """
         # measureData = np.array([19, 37, 30,	12,	53,	105, 82, 29, 61, 129, 103, 35, 32, 62, 48, 19])
         # read measureData.csv
         measureData = np.zeros(self.m)
@@ -366,16 +328,16 @@ class Predictor:
         for i in range(self.m):
             measureData[i] = eval(readData[i])
 
-        self.LM(measureData)
+        self.solve(measureData)
 
     def funScipy(self, state, coilIndex, measureData):
-        '''
+        """
         误差Cost计算函数
         :param state: 【np.array】估计位姿
         :param coilIndex: 【int】线圈编号
         :param measureData: 【np.array】测量值 (self.m,)
         :return: 【np.array】估计值-测量值 (self.m,)
-        '''
+        """
         T = self.tR(state)
         d = T[:3, 3] - self.coils.coilArray[coilIndex, :]
         em2 = T[2, :3]
@@ -387,12 +349,12 @@ class Predictor:
         return Eest - measureData
 
     def simScipy(self, stateX, sensor_std):
-        '''
+        """
         使用模拟的观测值验证scipy自带的优化算法
         :param stateX: 【np.array】模拟的真实状态
         :param sensor_std: sensor的噪声标准差[mG]
         :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
-        '''
+        """
         output_data = self.generateData(stateX, sensor_std)
         result = least_squares(self.funScipy, self.state, verbose=0, args=(np.arange(self.m), output_data), xtol=1e-6,
                                jac='3-point', )
@@ -402,71 +364,34 @@ class Predictor:
         return (err_t, err_em)
 
     def measureDataPredictorScipy(self, stateX):
-        '''
+        """
         使用实测结果估计位姿
         :param stateX: np.array】真实状态
         :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
-        '''
+        """
         # measureData = np.array([19, 37, 30,	12,	53,	105, 82, 29, 61, 129, 103, 35, 32, 62, 48, 19])
         # read measureData.csv
         measureData = np.zeros(self.m)
-        with open('measureData.csv' , 'r', encoding='utf-8') as f:
+        with open('measureData.csv', 'r', encoding='utf-8') as f:
             readData = f.readlines()
         for i in range(self.m):
             measureData[i] = eval(readData[i])
 
-        result = least_squares(self.funScipy, self.state, verbose=0, args=(np.arange(self.m), measureData), xtol=1e-6, jac='3-point',)
+        result = least_squares(self.funScipy, self.state, verbose=0, args=(np.arange(self.m), measureData), xtol=1e-6,
+                               jac='3-point', )
         stateResult = result.x
         err_t, err_em = self.compErro(stateResult, stateX)
 
-    def trajectorySim(self, shape, pointsNum, sensor_std, plotBool):
-        '''
-        模拟某条轨迹下的定位效果
-        :param shape: 【string】形状
-        :param pointsNum: 【int】线上的点数
-        :param sensor_std: 【float】传感器噪声
-        :param plotBool: 【bool】是否绘图
-        :param maxIter: 【int】最大迭代次数
-        :return:
-        实现流程
-        1、定义轨迹
-        2、提取轨迹上的点生成模拟数据
-        3、提取预估的状态，并绘制预估轨迹
-        '''
-        line = trajectoryLine(shape, pointsNum)
-        q = [1, 0, 0, 0]
-        stateLine = np.array([line[i] + q for i in range(pointsNum)])
-        state = line[0] + q
-
-        resultList = []  # 储存每一轮优化算法的最终结果
-
-        # 先对初始状态进行预估
-        E0sim = self.generateData(stateX=state, std=sensor_std)
-        # self.LM(E0sim)
-        resultList.append(self.state.copy())
-
-        # 对轨迹线上的其它点进行预估
-        for i in range(1, pointsNum):
-            print('--------point:{}---------'.format(i))
-            state = line[i] + q
-            Esim = self.generateData(stateX=state, std=sensor_std)
-            # self.LM(Esim)
-            resultList.append(self.state.copy())
-
-        if plotBool:
-            stateMP = np.asarray(resultList)
-            plotTrajectory(stateLine, stateMP, sensor_std)
-
     def genTranData(self, sensor_std, shape="circle", velocity=5):
-        '''
+        """
         生成动态轨迹的模拟数据
         :param shape: 【string】形状
         :param velocity: 【float】速度[m/s]
         :param sensor_std: 【float】传感器噪声
         :return:
-        '''
-        dt = 0.05   # 采样间隔时间[ms]
-        ym = 100   # 位移幅值[mm]
+        """
+        dt = 0.05  # 采样间隔时间[ms]
+        ym = 100  # 位移幅值[mm]
 
         if shape == "sin":
             start, end = -100, 100  # x轴起点和终点
@@ -500,7 +425,9 @@ class Predictor:
 
             with open('.\data\simData20220615.csv', 'w', newline='') as f:
                 fcsv = csv.writer(f)
-                fcsv.writerow(('timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)', 'gyroscope(deg/s)'))
+                fcsv.writerow((
+                              'timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)',
+                              'gyroscope(deg/s)'))
                 for i in range(pointsNum):
                     stateX = np.concatenate((line[i], q[i]))
                     Esim = self.generateData(stateX=stateX, std=0)[i % 16]
@@ -511,35 +438,11 @@ class Predictor:
             raise TypeError("shape is not right!!!")
 
 
-    def simErrDistributed(self, contourBar, sensor_std=0.01, pos_or_ori=0):
-        '''
-        模拟误差分布
-        :param contourBar: 【np.array】等高线的刻度条
-        :param sensor_std: 【float】sensor的噪声标准差[μV]
-        :param pos_or_ori: 【int】选择哪个输出 0：位置，1：姿态
-        :return:
-        '''
-        n = 10
-        x, y = np.meshgrid(np.linspace(-200, 200, n), np.linspace(-200, 200, n))
-        state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)
-        stateX = np.array([0, 0, 200, 1, 1, 0, 0], dtype=float)
-        z = np.zeros((n, n))
-        for i in range(n):
-            for j in range(n):
-                # state0[0] = x[i, j]
-                # state0[1] = y[i, j]
-                stateX[0] = x[i, j]
-                stateX[1] = y[i, j]
-                z[i, j] = self.simScipy(sensor_std=sensor_std, stateX=stateX)[pos_or_ori]
-                self.state = state0
-
-        plotErr(x, y, z, contourBar, titleName='sensor_std={}'.format(sensor_std))
-
 def sim():
-    '''
+    """
     仿真
     :return:
-    '''
+    """
     state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)  # 初始值
     states = np.array([30, -10, 260, 1, 0, 0, 0], dtype=float)  # 真实值
     # states = np.array([-50, 0, 200, 1, 0, 0, 0], dtype=float)
@@ -551,11 +454,6 @@ def sim():
 
     pred.genTranData(sensor_std=0.02)
 
-    #pred.simScipy(stateX=states, sensor_std=0.02)
-
-    # pred.trajectorySim(shape="circle", pointsNum=20, sensor_std=0.02, plotBool=True)
-
-    # pred.simErrDistributed(contourBar=np.linspace(0, 50, 9), sensor_std=0.02, pos_or_ori=0)
 
 def run():
     '''

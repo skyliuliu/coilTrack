@@ -85,16 +85,15 @@ $$
 | 文件名             | 简介                                         |
 | :----------------- | :------------------------------------------- |
 | agreement.py       | 读取接收端的串口通讯协议                     |
-| calculatorLM.py    | 使用LM算法实现的定位方法                     |
-| calculatorUKF.py   | 使用UKF算法实现的定位方法                    |
+| LMpredictor.py     | 使用LM算法实现的定位方法，包含李代数se3        |
+| UKFpredictor.py    | 使用UKF算法实现的定位方法                    |
 | predictorViewer.py | 绘图工具，包括定位过程，误差分布等           |
 | readData.py        | 实时读取接收端的数据                         |
 | coilArray.py       | 定义发射线圈和接收线圈参数的类               |
 | dataTool.py        | 时域数据处理函数，包含寻峰、FFT、绘图等      |
-| Lie.py             | 李代数的实现                                 |
-| se3LM.py           | 基于李代数+LM算法实现的定位方法              |
-| predictor.py       | 定位程序的主文件，calculatorLM + se3LM的集成 |
-| requirements.txt   | 依赖包及版本号                               |
+| Lie.py             | 李代数的实现  |
+| requirements.txt   | 依赖包及版本号  |
+| simluate.py        | 专用于仿真的类  |
 | pic/               | 保存图片信息 |
 | data/              | 保存仿真和实际运行的数据 |
 
