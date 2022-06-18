@@ -209,8 +209,7 @@ def sim(sensor_std, sensor_err, plotType, state0, plotBool, printBool, state=Non
     :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
     """
     if state is None:
-        # state = [0, 0.2, 0.4, 0, 0, 1, 1]
-        state = [0, 0.2, 0.4, 0.1, 0, 0, 0, 0, 1, 1]
+        state = np.array([0, 0, 200, np.pi / 4, -np.pi], dtype=float)
     currents = [2] * CoilArray.coilNum
     tracker = Tracker(currents, state0)
     E = np.zeros(tracker.coils.coilNum)
@@ -233,7 +232,7 @@ def sim(sensor_std, sensor_err, plotType, state0, plotBool, printBool, state=Non
         #     # E[i * 3 + 1] = inducedVolatage(d=d, em1=(0, 1, 0), em2=em1Sim)  # y线圈阵列产生的感应电压中间值
         #     # E[i * 3 + 2] = inducedVolatage(d=d, em1=(0, 0, 1), em2=em1Sim)  # z线圈阵列产生的感应电压中间值
         #     E[i] = inducedVolatage(d=d, em2=em1Sim)  # 单向线圈阵列产生的感应电压中间值
-        E = tracker.h(state)
+        E = tracker.hhh(state)
 
         simData = {}
         for j in range(tracker.coils.coilNum):
@@ -260,7 +259,7 @@ def sim(sensor_std, sensor_err, plotType, state0, plotBool, printBool, state=Non
                 plt.ioff()
                 plt.show()
         posPre = tracker.ukf.x[:3]
-        tracker.solve(printBool, Esim[:, i])
+        tracker.solve(Esim[:, i])
         delta_x = np.linalg.norm(tracker.ukf.x[:3] - posPre)
         # print('delta_x={:.3e}'.format(delta_x))
 
@@ -271,10 +270,19 @@ def sim(sensor_std, sensor_err, plotType, state0, plotBool, printBool, state=Non
             else:
                 break
 
-    err_pos = np.linalg.norm(tracker.ukf.x[:3] - state[:3]) / np.linalg.norm(state[:3])
-    err_em = np.linalg.norm(q2R(tracker.ukf.x[3: 7])[:, -1] - q2R(state[3: 7])[:, -1])
+    err_pos = np.linalg.norm(tracker.ukf.x[:3] - state[:3])   # 位移之差的模
+    # 四元数情况下
+    em2 = q2R(tracker.ukf.x[3: 7])[:, -1]
+    em2X = q2R(state[3: 7])[:, -1]
+    # 球坐标系下
+    theta, phi = tracker.ukf.x[3], tracker.ukf.x[4]
+    em2 = np.array([np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]).T
+    thetaX, phiX = state[3], state[4]
+    em2X = np.array([np.cos(phiX) * np.sin(thetaX), np.sin(phiX) * np.sin(thetaX), np.cos(thetaX)]).T
+
+    err_em = np.arccos(np.dot(em2, em2X)) / np.linalg.norm(em2) / np.linalg.norm(em2X) * 57.3   # 方向矢量形成的夹角
     print('\nerr_std: pos={}, err_pos={:.0%}, err_em={:.0%}'.format(np.round(state[:3], 3), err_pos, err_em))
-    return (err_pos, err_em)
+    return err_pos, err_em
 
 def measureDataPredictor(sensor_std, state0, plotType, plotBool, printBool, state=None, maxIter=50):
     """
@@ -466,6 +474,9 @@ def runReal():
     # 描绘3D轨迹
     track3D(state, qList=[qADC, qGyro, qAcc], tracker=tracker)
 
+
 if __name__ == '__main__':
-    runReal()
+    state0 = np.array([0, 0, 300, np.pi / 4, -np.pi], dtype=float)
+    state = np.array([0, 0, 200, np.pi / 4, -np.pi], dtype=float)
+    sim(5, 0.01, (0,1), state0, False, True, state=state, maxIter=20)
 
