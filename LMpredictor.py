@@ -8,15 +8,15 @@ desc: 实现定位算法的类，依据状态量的维度有不同的形式
 """
 import csv
 import time
-from queue import Queue
 from multiprocessing.dummy import Process
+from queue import Queue
 
 import matplotlib.pyplot as plt
 from scipy.optimize import least_squares
 
-from coilArray import CoilArray
-from predictorViewer import q2R, plotErr, plotTrajectory, track3D
 from Lie import *
+from coilArray import CoilArray
+from predictorViewer import q2R, track3D
 from readData import readRecData
 
 # plt.rcParams['font.sans-serif'] = ['SimHei']

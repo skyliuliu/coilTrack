@@ -3,3 +3,4 @@
 *.json
 *.lprof
 *.c
+.DS_Store

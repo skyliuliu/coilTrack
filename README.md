@@ -10,8 +10,8 @@
 
 - 线圈均可近似为磁偶极矩
 - 线圈之间相对静止
-
-![coils.png](./pic/coils.png)
+  
+<img src="./pic/coils.png" width="50%">
 
 以上图中的含义为：
 
@@ -52,7 +52,7 @@ $$
 - distance = 100  ```发射线圈之间的距离[mm]```
 
 发射线圈之间按照如下方式等距排列，按照从左到右，从上至下的顺序依次编号
-![coilArray.png](./pic/coilArray.png)
+<img src="./pic/coilArray.png" width="50%">
 
 ### 2.2接收线圈
 
@@ -108,12 +108,10 @@ $$
 
 #### 5.1 读取实时数据
 
-&emsp;&emsp;运行```readData.py```，出现UI界面后通过串口工具向发射端发送启动命令
-![实时采集数据界面](./pic/readData.PNG)
+&emsp;&emsp;运行```readData.py```，出现UI界面后通过串口工具向发射端发送启动命令<img src="./pic/readData.PNG" width="80%">
 
 #### 5.2 实时定位
 
 &emsp;&emsp;运行```calculatorUKF.py```，出现UI界面后通过串口工具向发射端发送启动命令
-![定位程序界面](./pic/track.png)
-
+<img src="./pic/track.png" width="80%">
 
