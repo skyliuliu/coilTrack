@@ -108,7 +108,8 @@ class Tracker:
         :param state: 预估的状态量 (n, )
         :return: 感应电压 [1e-6V] (m, )
         """
-        pos, em2 = self.parseState(state)
+        pos_em2 = self.parseState(state)
+        pos, em2 = pos_em2[:3], pos_em2[3:]
         dArray0 = pos - self.coils.coilArray
 
         # 球坐标系下的接收线圈朝向
@@ -162,7 +163,7 @@ class Tracker:
     def parseState(self, state):
         """
         从状态量中提取目标的位置和朝向
-        :return: 【np.array】位置和朝向 (6,)
+        :return: 【np.array】位置和朝向 (6, )
         """
         if self.n == 5:
             pos = state[:3]
@@ -176,10 +177,11 @@ class Tracker:
             em2 = q2R(state[3: 7])[:, 2]
         else:
             raise ValueError("状态量输入错误")
-        return pos, em2
+        return np.concatenate((pos, em2))
 
     def statePrint(self):
-        pos, em2 = self.parseState(self.ukf.x)
+        pos_em2 = self.parseState(self.ukf.x)
+        pos, em2 = pos_em2[:3], pos_em2[3:]
         Estate = self.h(self.ukf.x)  # 计算每个状态对应的感应电压
 
         if self.printBool:

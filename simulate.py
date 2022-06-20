@@ -45,15 +45,17 @@ class Simulate(Tracker):
         for i in range(self.m):
             if self.sensor_err:
                 Esim[i] = EX[i] * (1 + self.sensor_err * (-1) ** i)  # 百分比误差
+                continue
             elif self.sensor_std:
                 Esim[i] = np.random.normal(EX[i], self.sensor_std, 1)
+                continue
             else:
                 Esim[i] = EX[i]
 
         # 运行模拟数据
         for i in range(maxIter):
             if self.printBool:
-                print('=========={}=========='.format(i))
+                print('\n=========={}=========='.format(i))
             if self.plotBool:
                 plt.ion()
                 plotP(self, stateX, i, self.plotType)  # 画出卡曼协方差矩阵的椭圆图
@@ -72,11 +74,13 @@ class Simulate(Tracker):
                 else:
                     break
 
-        pos, em2 = self.parseState(self.state)
-        posX, em2X = self.parseState(stateX)
+        pos_em2 = self.parseState(self.state)
+        pos, em2 = pos_em2[:3], pos_em2[3:]
+        posX_em2X = self.parseState(stateX)
+        posX, em2X = posX_em2X[:3], posX_em2X[3:]
         err_pos = np.linalg.norm(pos - posX)  # 位移之差的模
         err_em = np.arccos(np.dot(em2, em2X) / np.linalg.norm(em2) / np.linalg.norm(em2X)) * 57.3  # 方向矢量形成的夹角
-        print('\nerr_std: pos={}, err_pos={:.0f}mm, err_em={:.0f}\u00b0'.format(posX, err_pos, err_em))
+        print('result: real_pos={}, err_pos={:.0f}mm, err_em={:.0f}\u00b0'.format(posX, err_pos, err_em))
         return err_pos, err_em
 
     def simErrDistributed(self, contourBar, pos_or_ori=0):
@@ -133,7 +137,7 @@ class Simulate(Tracker):
 
         # 对轨迹线上的其它点进行预估
         for i in range(1, pointsNum):
-            print('--------point:{}---------'.format(i))
+            print('\n--------point:{}---------'.format(i))
             # 固定迭代次数
             self.simOne(stateX=stateLine[i], maxIter=10)
             stateMP.append(self.state.copy())
@@ -145,15 +149,15 @@ class Simulate(Tracker):
 if __name__ == '__main__':
     currents = [2] * 16
     # 球坐标系
-    state0 = np.array([0, 0, 200, np.pi / 4, -np.pi], dtype=float)
-    stateX = np.array([168, -100, 200, np.pi / 4, 0], dtype=float)
+    state0 = np.array([0, 0, 200, np.pi / 4, 0], dtype=float)
+    stateX = np.array([0, -10, 200, np.pi / 4, np.pi / 4], dtype=float)
     # 四元数
     # state0 = np.array([0, 0, 200, 1, 0, 0, 0], dtype=float)  # 初始值
     # stateX = np.array([30, -10, 260, 1, 1, 2, 2], dtype=float)  # 真实值
-    sim = Simulate(currents=[2] * 16, state0=state0, sensor_err=0.03, sensor_std=2, plotType=(1, 2))
+    sim = Simulate(currents=[2] * 16, state0=state0, sensor_err=0.01, sensor_std=None, plotType=(1, 2))
 
-    # sim.simOne(stateX, maxIter=20)
+    # sim.simOne(stateX, maxIter=50)
 
     # sim.simErrDistributed(contourBar=np.linspace(0, 50, 9))
 
-    sim.trajectorySim(shape="straight", pointsNum=50)
+    sim.trajectorySim(shape="circle", pointsNum=50)

@@ -6,8 +6,7 @@
 
 ### 1.1 原理
 
-**假设**
-
+**假设：**
 - 线圈均可近似为磁偶极矩
 - 线圈之间相对静止
   
@@ -87,15 +86,15 @@ $$
 | agreement.py       | 读取接收端的串口通讯协议                     |
 | LMpredictor.py     | 使用LM算法实现的定位方法，包含李代数se3        |
 | UKFpredictor.py    | 使用UKF算法实现的定位方法                    |
-| predictorViewer.py | 绘图工具，包括定位过程，误差分布等           |
-| readData.py        | 实时读取接收端的数据                         |
+| predictorViewer.py | 绘图工具，包括定位结果3D显示，仿真的误差分布等   |
+| readData.py        | 实时读取接收端的数据，并实时显示出来           |
 | coilArray.py       | 定义发射线圈和接收线圈参数的类               |
-| dataTool.py        | 时域数据处理函数，包含寻峰、FFT、绘图等      |
+| dataTool.py        | 数据处理函数，包含寻峰、FFT、绘图等      |
 | Lie.py             | 李代数的实现  |
 | requirements.txt   | 依赖包及版本号  |
-| simluate.py        | 专用于仿真的类  |
-| pic/               | 保存图片信息 |
-| data/              | 保存仿真和实际运行的数据 |
+| simluate.py        | 仿真程序  |
+| pic/               | 图片信息 |
+| data/              | 仿真和实际运行的数据 |
 
 ## 4. 软件安装方法
 
@@ -112,6 +111,6 @@ $$
 
 #### 5.2 实时定位
 
-&emsp;&emsp;运行```calculatorUKF.py```，出现UI界面后通过串口工具向发射端发送启动命令
+&emsp;&emsp;运行```UKFpredictor.py```，出现UI界面后通过串口工具向发射端发送启动命令
 <img src="./pic/track.png" width="80%">
 

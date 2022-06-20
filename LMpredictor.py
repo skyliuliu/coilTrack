@@ -88,7 +88,7 @@ class Predictor:
             em2 = q2R(state[3: 7])[:, 2]
         else:
             raise ValueError("状态量输入错误")
-        return pos, em2
+        return np.concatenate((pos, em2))
 
     def h(self, state):
         """
@@ -96,7 +96,8 @@ class Predictor:
         :param state: 预估的状态量 (n, )
         :return: E+A 感应电压 [1e-6V] + 方向矢量[1] (m, )
         """
-        pos, em2 = self.parseState(state)
+        pos_em2 = self.parseState(state)
+        pos, em2 = pos_em2[:3], pos_em2[3:]
         dArray0 = pos - self.coils.coilArray
 
         EA = np.zeros(self.m)
@@ -123,19 +124,18 @@ class Predictor:
         :param std: 【float】传感器输出值的标准差/误差比
         :return:
         """
-        TX = self.tR(stateX)
+        pos_em2 = self.parseState(stateX)
+        pos, em2 = pos_em2[:3], pos_em2[3:]
         midData = self.h(stateX)
-        t = TX[:3, 3]
-        ez = TX[2, :3]
 
         simData = np.zeros(self.m)
         for j in range(self.m):
-            # simData[j] = np.random.normal(midData[j], std, 1)
-            simData[j] = midData[j] * (1 + (-1) ** j * std)
+            # simData[j] = np.random.normal(midData[j], std, 1)   # 正太分布的噪声模型
+            simData[j] = midData[j] * (1 + (-1) ** j * std)    # 百分比误差的噪声模型
             # simData[j] = midData[j] + (-1) ** j * std
 
         if self.printBool:
-            print('turth: t={}, ez={}'.format(np.round(t, 3), np.round(ez, 3)))
+            print('turth: t={}, ez={}'.format(np.round(pos, 3), np.round(em2, 3)))
             print('sensor_mid={}'.format(np.round(midData[:], 3)))
             print('sensor_sim={}'.format(np.round(simData[:], 3)))
         return simData
@@ -386,7 +386,7 @@ class Predictor:
         """
         生成动态轨迹的模拟数据
         :param shape: 【string】形状
-        :param velocity: 【float】速度[m/s]
+        :param velocity: 【float】速度[mm/s]
         :param sensor_std: 【float】传感器噪声
         :return:
         """
@@ -425,12 +425,11 @@ class Predictor:
 
             with open('.\data\simData20220615.csv', 'w', newline='') as f:
                 fcsv = csv.writer(f)
-                fcsv.writerow((
-                              'timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)',
+                fcsv.writerow(('timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)',
                               'gyroscope(deg/s)'))
                 for i in range(pointsNum):
                     stateX = np.concatenate((line[i], q[i]))
-                    Esim = self.generateData(stateX=stateX, std=0)[i % 16]
+                    Esim = self.generateData(stateX=stateX, std=sensor_std)[i % 16]
                     ai_np = q2R(q[i])[:3, 2] * 9800 + np.array(a[i])
                     ai = tuple(_ for _ in ai_np)
                     fcsv.writerow((now + dt * i, line[i], q[i], v[i], i % 16, Esim, ai, w))
@@ -452,7 +451,7 @@ def sim():
 
     pred = Predictor(state=state0, currents=[2] * 16)
 
-    pred.genTranData(sensor_std=0.02)
+    pred.genTranData(sensor_std=0)
 
 
 def run():

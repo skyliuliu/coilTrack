@@ -117,7 +117,7 @@ def q2Euler(q):
     yaw = math.atan2(2 * q0 * q3 + 2 * q1 * q2, 1 - 2 * q2 * q2 - 2 * q3 * q3)
     return np.array([pitch, roll, yaw]) * 57.3
 
-def parseState(state):
+def transformState2(state):
     '''
     从位姿状态中获取旋转矢量，并提取位置和欧拉角
     :param state: 【np.array】/【se3】位姿
@@ -135,7 +135,7 @@ def parseState(state):
         euler = q2Euler(state.quaternion())
     return [pos, angle, uAxis, euler]
 
-def parseState2(state):
+def transformState2(state):
     '''
     从xyzθφ位姿状态中获取旋转矢量，并提取位置和姿态角
     :param state: 【np.array】/【se3】位姿
@@ -181,9 +181,13 @@ def plotP(predictor, stateX, index, plotType):
     scalePos = 1
     scaleEm2 = 10
     x, y = plotType
-    xtruth, mtruth = predictor.parseState(stateX)  # 获取真实值
+    xtruth_mtruth = predictor.parseState(stateX).copy()  # 获取真实值
+    xtruth = xtruth_mtruth[:3]
+    mtruth = xtruth_mtruth[3:]
 
-    pos, em2 = predictor.parseState(predictor.ukf.x)  # 获取预测值
+    pos_em2 = predictor.parseState(predictor.ukf.x).copy()  # 获取预测值
+    pos = pos_em2[:3]
+    em2 = pos_em2[3:]
     if plotType == (0, 1):
         plt.ylim(-0.2, 0.4)
         plt.axis('equal')  # 坐标轴按照等比例绘图
@@ -472,7 +476,7 @@ def track3D(state, qList=None, tracker=None):
     # trajectory line
     pos0 = np.array([[0, 0, 0]]) * 0.1
 
-    pos, euler = parseState2(state)
+    pos, euler = transformState2(state)
     axisX = np.array([1, 0, 0])
     axisZ = np.array([0, 0, 1])
     track0 = np.concatenate((pos0, pos.reshape(1, 3)))
@@ -556,7 +560,7 @@ def track3D(state, qList=None, tracker=None):
                     z.clear()
 
         # update position and orientation
-        pos, euler = parseState2(tracker.state)
+        pos, euler = transformState2(tracker.state)
         pt = pos.reshape(1, 3)
         et = euler.reshape(1, 2)
         
