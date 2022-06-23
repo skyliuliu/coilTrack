@@ -76,7 +76,7 @@ $$
 ### 2.5 相关参数计算
 
 $$
-A=\mu_0N_1N_2S_1S_2fI=18347893786 (I=2A)
+A=\mu_0N_1N_2S_1S_2fI=18347893 (I=2A)
 $$
 
 ## 3. 代码组成
@@ -100,7 +100,7 @@ $$
 
 - python >= 3.8
 - pip工具升级到最新版本：``python3 -m pip install --upgrade pip``
-- 依赖包的版本要求如requirements.txt所示，或者用最新版本
+- 依赖包的版本要求如requirements.txt所示
 - 依赖包安装方法：pip install -r requirements.txt
 
 ## 5. 使用方法

@@ -189,50 +189,6 @@ class Tracker:
                 pos, em2, max(abs(Estate)), min(abs(Estate)), self.totalTime))
 
 
-def measureDataPredictor(state0, plotType, plotBool, printBool, state=None, maxIter=50):
-    """
-    使用实测结果估计位姿
-    :param state0: 【np.array】初始值 (n,)
-    :param state: 【list】模拟的真实状态，可以有多个不同的状态
-    :param plotType: 【tuple】描绘位置的分量 'xy' or 'yz'
-    :param plotBool: 【bool】是否绘图
-    :param printBool: 【bool】是否打印输出
-    :param maxIter: 【int】最大迭代次数
-    :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
-    """
-    measureData = np.zeros(CoilArray.coilNum)
-    with open('measureData.csv', 'r', encoding='utf-8') as f:
-        readData = f.readlines()
-    for i in range(CoilArray.coilNum):
-        measureData[i] = eval(readData[i])
-
-    if state is None:
-        state = [0, 0, 0.3, 1, 0, 0, 0]
-    currents = [2] * CoilArray.coilNum
-    tracker = Tracker(currents, state0)
-
-    for i in range(maxIter):
-        if printBool:
-            print('=========={}=========='.format(i))
-        if plotBool:
-            plt.ion()
-            plotP(tracker, state, i, plotType)
-            if i == maxIter - 1:
-                plt.ioff()
-                plt.show()
-        posPre = tracker.ukf.x[:3]
-        tracker.solve(measureData)
-        delta_x = np.linalg.norm(tracker.ukf.x[:3] - posPre)
-        # print('delta_x={:.3e}'.format(delta_x))
-
-        if delta_x < 1e-4:
-            if plotBool:
-                plt.ioff()
-                plt.show()
-            else:
-                break
-
-
 def runReal():
     """
     启动实时定位

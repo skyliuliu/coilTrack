@@ -195,8 +195,8 @@ def fftPack(p):
 
 if __name__ == '__main__':
     # 用pandas读取
-    data = pd.read_csv('data.csv', names=['i', 'E'], header=0)
-    E0 = data.loc[0: 1000]['E'].mean()  # 求E的均值
+    data = pd.read_csv('data/adcV.csv', names=['i', 'E'], header=0)
+    E0 = data.loc[0: 10000]['E'].mean()  # 求E的均值
 
     # 寻峰，并计算均值
     findPeakValley(data, E0, noiseStd=6e-6)

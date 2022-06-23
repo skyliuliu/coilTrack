@@ -131,43 +131,8 @@ class CoilArray:
         em2 /= np.linalg.norm(em2)
 
         E = 2 * np.pi * 0.1 * self.freq * ii * self.S1 * self.S2 / dNorm ** 3 * (
-                3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2))
-        return abs(E) / 1000  # 单位1e-6V
-
-    def solenoid(self, em2, ii, d):
-        """
-        基于毕奥-萨法尔定律，计算发射线圈在接收线圈中产生的感应电动势
-        :param ii: 激励电流的幅值 [A]
-        :param d: 初级线圈中心到次级线圈中心的位置矢量 [m]
-        :param em2: 接收线圈的朝向
-        :return E: 感应电压 [1e-6V]
-        """
-        nh = int(self.n1 / self.nr1)
-        ntheta = 100
-        theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=False)
-        r = np.linspace(self.r1, self.r1 + self.nr1 * self.d1, self.nr1, endpoint=False)
-        h = np.linspace(0, nh * self.d1, nh, endpoint=False)
-        hh = np.array([[0, 0, hi] for hi in h])
-
-        drxy = np.stack((np.cos(theta), np.sin(theta), np.zeros(ntheta)), 1)  # 电流元在xy平面的位置方向
-        dlxy = np.stack((-np.sin(theta), np.cos(theta), np.zeros(ntheta)), 1)  # 电流元在xy平面的电流方向
-        dlxy = np.vstack([dlxy] * nh)
-
-        dr = np.zeros((ntheta * self.n1, 3), dtype=np.float)
-        dl = np.zeros((ntheta * self.n1, 3), dtype=np.float)
-        for i in range(self.nr1):
-            dl[ntheta * nh * i: ntheta * nh * (i + 1), :] = r[i] * 2 * np.pi / ntheta * dlxy
-            for j in range(nh):
-                dr[ntheta * (i * nh + j): ntheta * (i * nh + j + 1), :] = r[i] * drxy + hh[j]
-
-        er = d * 1000 - dr
-        rNorm = np.linalg.norm(er, axis=1, keepdims=True)
-        er0 = er / rNorm
-        dB = 1e-4 * ii * np.cross(dl, er0) / rNorm ** 2
-        B = dB.sum(axis=0)
-
-        E = 2 * np.pi * self.freq * self.S2 * np.dot(B, em2) * 1e6
-        return E
+                3 * np.dot(er, em1) * np.dot(er, em2) - np.dot(em1, em2)) / 1000
+        return abs(E)    # 实测结果中感应电压只能为正值
 
     def h(self, state):
         """
@@ -205,11 +170,9 @@ class CoilArray:
 if __name__ == '__main__':
     currents = [2.21, 2.22, 2.31, 2.39, 2.33, 2.31, 2.29, 2.34, 2.29, 2.38, 2.36, 2.31, 2.35, 2.41, 2.42, 2.35]
     coils = CoilArray(np.array(currents))
-    em2 = np.array([0, 0, 1], dtype=float)
-    ii = 2
     state = np.array([0, -5, 195 + 7.5, 1, 0, 0, 0])
     vm = coils.h(state)
     print('vm(uV):\n', np.round(vm, 0))
 
-    A = 4 * np.pi * 1e-7 * coils.n1 * coils.n2 * coils.S1 * coils.S2 * coils.freq * 2
+    A = 4 * np.pi * 1e-10 * coils.n1 * coils.n2 * coils.S1 * coils.S2 * coils.freq * 2
     print('A=', A)

@@ -27,16 +27,17 @@ np.set_printoptions(suppress=True, precision=2)
 class Predictor:
     printBool = True
 
-    def __init__(self, currents, state):
+    def __init__(self, currents, state0):
         """
         初始化定位类
-        :param state: 【np.array】/【se3】初始位姿
+        :param currents:【float】发射线圈阵列的电流幅值[A]
+        :param state0: 【np.array】/【se3】初始位姿
         """
-        self.state = state
-        if isinstance(state, np.ndarray):
-            self.n = len(state)
-        elif isinstance(state, se3):
-            self.n = len(state.w)
+        self.state = state0
+        if isinstance(state0, np.ndarray):
+            self.n = len(state0)
+        elif isinstance(state0, se3):
+            self.n = len(state0.w)
         else:
             raise TypeError("状态量的类型输入有误！")
 
@@ -131,7 +132,7 @@ class Predictor:
         simData = np.zeros(self.m)
         for j in range(self.m):
             # simData[j] = np.random.normal(midData[j], std, 1)   # 正太分布的噪声模型
-            simData[j] = midData[j] * (1 + (-1) ** j * std)    # 百分比误差的噪声模型
+            simData[j] = midData[j] * (1 + (-1) ** j * std)  # 百分比误差的噪声模型
             # simData[j] = midData[j] + (-1) ** j * std
 
         if self.printBool:
@@ -276,7 +277,8 @@ class Predictor:
         self.totalTime = time.time() - self.t0
         self.t0 = time.time()
         self.iter = i
-        pos, em2 = self.parseState(self.state)
+        pos_em2 = self.parseState(self.state)
+        pos, em2 = pos_em2[:3], pos_em2[3:]
 
         if not self.printBool:
             return
@@ -315,21 +317,6 @@ class Predictor:
         # err_pos, err_em = self.compErro(self.state, stateX)
         return
 
-    def measureDataPredictor(self):
-        """
-        使用实测结果估计位姿
-        :return:
-        """
-        # measureData = np.array([19, 37, 30,	12,	53,	105, 82, 29, 61, 129, 103, 35, 32, 62, 48, 19])
-        # read measureData.csv
-        measureData = np.zeros(self.m)
-        with open('measureData.csv', 'r', encoding='utf-8') as f:
-            readData = f.readlines()
-        for i in range(self.m):
-            measureData[i] = eval(readData[i])
-
-        self.solve(measureData)
-
     def funScipy(self, state, coilIndex, measureData):
         """
         误差Cost计算函数
@@ -363,25 +350,6 @@ class Predictor:
         err_t, err_em = self.compErro(stateResult, stateX)
         return (err_t, err_em)
 
-    def measureDataPredictorScipy(self, stateX):
-        """
-        使用实测结果估计位姿
-        :param stateX: np.array】真实状态
-        :return: 【tuple】 位置[x, y, z]和姿态ez的误差百分比
-        """
-        # measureData = np.array([19, 37, 30,	12,	53,	105, 82, 29, 61, 129, 103, 35, 32, 62, 48, 19])
-        # read measureData.csv
-        measureData = np.zeros(self.m)
-        with open('measureData.csv', 'r', encoding='utf-8') as f:
-            readData = f.readlines()
-        for i in range(self.m):
-            measureData[i] = eval(readData[i])
-
-        result = least_squares(self.funScipy, self.state, verbose=0, args=(np.arange(self.m), measureData), xtol=1e-6,
-                               jac='3-point', )
-        stateResult = result.x
-        err_t, err_em = self.compErro(stateResult, stateX)
-
     def genTranData(self, sensor_std, shape="circle", velocity=5):
         """
         生成动态轨迹的模拟数据
@@ -390,23 +358,13 @@ class Predictor:
         :param sensor_std: 【float】传感器噪声
         :return:
         """
-        dt = 0.05  # 采样间隔时间[ms]
+        dt = 0.05  # 采样间隔时间[s]
         ym = 100  # 位移幅值[mm]
 
-        if shape == "sin":
-            start, end = -100, 100  # x轴起点和终点
-            pointsNum = int((end - start) / dt / velocity)
-            line_x = np.linspace(start, end, pointsNum)
-            v_ex = np.abs(np.sin(2 * np.pi * (line_x - start) / pointsNum))
-            v_ey = np.cos(2 * np.pi * (line_x - start) / pointsNum)
-            line_y = v_ey * ym
-            line = [(x, y, 300) for (x, y) in zip(line_x, line_y)]
-            v = list(zip(v_ex, v_ey))
-
-        elif shape == "circle":
+        if shape == "circle":
             pointsNum = int(10 * np.pi * ym / dt / velocity)
             acc = velocity * velocity / ym
-            angularVel = 2 * np.pi / dt
+            angularVel = 10 * np.pi / dt / pointsNum
 
             angle = np.linspace(0, 2 * np.pi, pointsNum)
             line_x = np.sin(angle) * ym
@@ -425,12 +383,13 @@ class Predictor:
 
             with open('.\data\simData20220615.csv', 'w', newline='') as f:
                 fcsv = csv.writer(f)
-                fcsv.writerow(('timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)',
-                              'gyroscope(deg/s)'))
+                fcsv.writerow(
+                    ('timeStamp/s', 'positon/mm', 'q', 'velocity(mm/s)', 'coil', 'E/uV', 'accelerator(mm/s^2)',
+                     'gyroscope(deg/s)'))
                 for i in range(pointsNum):
                     stateX = np.concatenate((line[i], q[i]))
                     Esim = self.generateData(stateX=stateX, std=sensor_std)[i % 16]
-                    ai_np = q2R(q[i])[:3, 2] * 9800 + np.array(a[i])
+                    ai_np = q2R(q[i]).T[:3, 2] * 9800 + np.array(a[i])
                     ai = tuple(_ for _ in ai_np)
                     fcsv.writerow((now + dt * i, line[i], q[i], v[i], i % 16, Esim, ai, w))
         else:
@@ -449,7 +408,7 @@ def sim():
     state = se3(vector=np.array([0, 0, 0, 0, 0, 300]))
     stateX = se3(vector=np.array([1.252, 0.009, 0.049, -0.066, -26.071, 233.36]))
 
-    pred = Predictor(state=state0, currents=[2] * 16)
+    pred = Predictor(currents=[2] * 16, state0=state0)
 
     pred.genTranData(sensor_std=0)
 
@@ -472,11 +431,11 @@ def run():
     # 读取发射端的电流，然后创建定位器对象
     currents = [2.22, 2.2, 2.31, 2.37, 2.32, 2.26, 2.26, 2.37, 2.24, 2.37, 2.36, 2.32, 2.34, 2.42, 2.41, 2.3]
     # runsend(open=True)
-    pred = Predictor(state, currents)
+    pred = Predictor(currents, state)
 
     # 描绘3D轨迹
     track3D(state, qList=[qADC, qGyro, qAcc], tracker=pred)
 
 
 if __name__ == '__main__':
-    sim()
+    run()
