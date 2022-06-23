@@ -117,7 +117,7 @@ def q2Euler(q):
     yaw = math.atan2(2 * q0 * q3 + 2 * q1 * q2, 1 - 2 * q2 * q2 - 2 * q3 * q3)
     return np.array([pitch, roll, yaw]) * 57.3
 
-def transformState2(state):
+def transformState(state):
     '''
     从位姿状态中获取旋转矢量，并提取位置和欧拉角
     :param state: 【np.array】/【se3】位姿
@@ -139,12 +139,12 @@ def transformState2(state):
     '''
     从xyzθφ位姿状态中获取旋转矢量，并提取位置和姿态角
     :param state: 【np.array】/【se3】位姿
-    :return: 【list】[pos, angle, uAxis, euler]
+    :return: 【list】[pos, angle] 位置 + θ, φ角
     '''
 
     pos = state[:3] * 0.1
-    euler = state[3: 5] * 57.3
-    return [pos, euler]
+    angle = state[3: 5] * 57.3
+    return [pos, angle]
 
 def plotLM(residual_memory, us):
     '''
@@ -436,11 +436,13 @@ class Custom3DAxis(gl.GLAxisItem):
         ogl.glEnd()
 
 
-def track3D(state, qList=None, tracker=None):
+def track3D(state, qList=None, tracker=None, quaternion=False):
     '''
     描绘目标状态的3d轨迹
     :param state: 【np.array】目标的状态
-    :param qList: 
+    :param qList: 【Queue】实测数据队列
+    :param tracker: 定位算法类
+    :param quaternion: 【bool】姿态是否用四元数描述
     :return:
     '''
     app = QtGui.QApplication([])
@@ -476,7 +478,10 @@ def track3D(state, qList=None, tracker=None):
     # trajectory line
     pos0 = np.array([[0, 0, 0]]) * 0.1
 
-    pos, euler = transformState2(state)
+    if quaternion:
+        pos, angle, uAxis, euler = transformState(state)    # 四元数
+    else:
+        pos, angle = transformState2(state)   # 球坐标系
     axisX = np.array([1, 0, 0])
     axisZ = np.array([0, 0, 1])
     track0 = np.concatenate((pos0, pos.reshape(1, 3)))
@@ -487,15 +492,13 @@ def track3D(state, qList=None, tracker=None):
     sphereMesh = gl.GLMeshItem(meshdata=sphereData, smooth=True, shader='shaded', glOptions='opaque')
     w.addItem(sphereMesh)
     ArrowData = gl.MeshData.cylinder(rows=20, cols=20, radius=[0.5, 0], length=1.5)
-    ArrowMesh = gl.GLMeshItem(meshdata=ArrowData, smooth=True, color=(1, 0, 0, 0.6), shader='balloon',
-                              glOptions='opaque')
-    #ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
-    ArrowMesh.rotate(euler[0], axisX[0], axisX[1], axisX[2])
-    ArrowMesh.rotate(euler[1], axisZ[0], axisZ[1], axisZ[2])
+    ArrowMesh = gl.GLMeshItem(meshdata=ArrowData, smooth=True, color=(1, 0, 0, 0.6), shader='balloon', glOptions='opaque')
+    if quaternion:
+        ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])
+    else:  
+        ArrowMesh.rotate(angle[0], axisX[0], axisX[1], axisX[2])
+        ArrowMesh.rotate(angle[1], axisZ[0], axisZ[1], axisZ[2])
     w.addItem(ArrowMesh)
-    # w.setWindowTitle('position={}cm, pitch={:.0f}\u00b0, roll={:.0f}\u00b0, yaw={:.0f}\u00b0,'
-    # .format(np.round(pos, 1), euler[0], euler[1], euler[2]))
-    #w.show()
 
     # add Position
     posDock = Dock("\n坐标/cm\n", size=(160, 10))
@@ -507,7 +510,12 @@ def track3D(state, qList=None, tracker=None):
     # add euler angles
     eulerDock = Dock("\n姿态角/\u00b0\n", size=(160, 10))
     eulerText = QtGui.QLabel()
-    eulerText.setText("theta = {:.0f} \u00b1 {}\n\n phi = {:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0))
+
+    if quaternion:
+        eulerText.setText("pitch = {:.0f} \u00b1 {}\n\n roll = {:.0f} \u00b1 {}\n yaw = {:.0f} \u00b1 {}".format(euler[0], 0, euler[1], 0, euler[2], 0))
+    else:
+        eulerText.setText("theta = {:.0f} \u00b1 {}\n\n phi = {:.0f} \u00b1 {}".format(angle[0], 0, angle[1], 0))
+
     eulerDock.addWidget(eulerText)
     area.addDock(eulerDock, 'bottom', posDock)
 
@@ -530,7 +538,10 @@ def track3D(state, qList=None, tracker=None):
     i = 1
     # 记录位置和姿态的历史值
     pts = pos.reshape(1, 3)
-    eulers = euler.reshape(1, 2)
+    if quaternion:
+        eulers = euler.reshape(1, 3)   
+    else:
+        eulers = angle.reshape(1, 2)
 
     z = []
     accData = []
@@ -560,11 +571,14 @@ def track3D(state, qList=None, tracker=None):
                     z.clear()
 
         # update position and orientation
-        pos, euler = transformState2(tracker.state)
+        if quaternion:
+            pos, angle, uAxis, euler = transformState(tracker.state)
+            et = euler.reshape(1, 3)  
+        else:
+            pos, angle = transformState2(tracker.state)
+            et = angle.reshape(1, 2)
         pt = pos.reshape(1, 3)
-        et = euler.reshape(1, 2)
         
-
         if pts.size < 150:
             pts = np.concatenate((pts, pt))
             eulers = np.concatenate((eulers, et))
@@ -575,21 +589,33 @@ def track3D(state, qList=None, tracker=None):
 
         stdPosX = pts[:, 0].std()
         stdPosY = pts[:, 1].std()
-        stdPosz = pts[:, 2].std()
+        stdPosZ = pts[:, 2].std()
         stdPitch = eulers[:, 0].std()
         stdRoll = eulers[:, 1].std()
+        if quaternion:
+            stdYaw = eulers[:, 2].std()
 
         # update gui
         ArrowMesh.resetTransform()
         sphereMesh.resetTransform()
-        ArrowMesh.rotate(euler[0], 0, 1, 0)
-        ArrowMesh.rotate(euler[1], axisZ[0], axisZ[1], axisZ[2])
+        if quaternion:
+            ArrowMesh.rotate(angle, uAxis[0], uAxis[1], uAxis[2])    # 四元数
+        else:
+            ArrowMesh.rotate(angle[0], 0, 1, 0)
+            ArrowMesh.rotate(angle[1], axisZ[0], axisZ[1], axisZ[2])
         ArrowMesh.translate(*pos)
         sphereMesh.translate(*pos)
         
         # update state
-        posText.setText(" x = {:.2f} \u00b1 {:.2f}\n\n y = {:.2f} \u00b1 {:.2f}\n\n z = {:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosz))
-        eulerText.setText(" theta = {:.0f} \u00b1 {:.0f}\n\n phi = {:.0f} \u00b1 {:.0f}".format(euler[0], stdPitch, euler[1], stdRoll))
+        posText.setText(" x = {:.2f} \u00b1 {:.2f}\n\n y = {:.2f} \u00b1 {:.2f}\n\n z = {:.2f} \u00b1 {:.2f}".format(pos[0], stdPosX, pos[1], stdPosY, pos[2], stdPosZ))
+
+        if quaternion:
+            eulerText.setText(" pitch = {:.0f} \u00b1 {:.0f}\n\n roll = {:.0f} \u00b1 {:.0f}\n\n yaw = {:.0f} \u00b1 {:.0f}"
+            .format(euler[0], stdPitch, euler[1], stdRoll, euler[2], stdYaw))   
+        else:
+            eulerText.setText(" theta = {:.0f} \u00b1 {:.0f}\n\n phi = {:.0f} \u00b1 {:.0f}"
+            .format(angle[0], stdPitch, angle[1], stdRoll))
+
         timeText.setText(" total time = {:.3f}s\n compute time = {:.3f}s".format(tracker.totalTime, tracker.compTime))
         iterText.setText(" iter times = " + str(tracker.iter))
         i += 1
