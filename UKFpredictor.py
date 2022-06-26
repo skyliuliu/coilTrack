@@ -18,14 +18,15 @@ plt.rcParams['axes.unicode_minus'] = False
 
 class Tracker:
     deltaT = 10e-3  # 相邻发射线圈产生的接收信号的间隔时间[s]
-    printBool = False  # 是否打印结果
+    printBool = True  # 是否打印结果
 
     def __init__(self, currents, state0):
         """
+        # 预测量：x, y, z, θ, φ
         :param currents:【float】发射线圈阵列的电流幅值[A]
         :param state0: 【np.array】初始值 (n,)
         """
-        self.n = state0.size  # 预测量：x, y, z, θ, φ
+        self.n = state0.size 
         self.dt = 0.5  # 时间间隔[s]
         self.currents = currents
         self.coils = CoilArray(np.array(currents))
@@ -43,18 +44,30 @@ class Tracker:
         self.ukf.R *= 5  # 观测值的协方差
 
         self.ukf.P *= 1000  # 初始位置x,y,z的协方差
-        self.ukf.P[3, 3] = 1  # θ的初始协方差
-        self.ukf.P[4, 4] = 0.4  # φ的初始协方差
+        self.ukf.Q = np.eye(self.n) * 1 * self.dt  # 将速度作为位移的过程噪声来源，Qi = v * dt
+        if self.n == 7:    # x, y, z, q0, q1, q2, q3
+            self.ukf.P[3:, 3:] = np.eye(4) * 0.01
 
-        self.ukf.Q = np.eye(self.n) * 1 * self.dt  # 将速度作为过程噪声来源，Qi = v * dt
-        self.ukf.Q[3, 3] = 0.5 * self.dt  # θ轴转动噪声
-        self.ukf.Q[4, 4] = 0.5 * self.dt  # φ轴转动噪声
+            # wx, wy, wz = 1, 0, 1   # 角速度作为四元数的过程噪声来源
+            # w = np.array([  [0, -wx, -wy, -wz],   # 出现奇异值报错，可能时参数没调好，暂时注释掉
+            #                 [wx, 0, wz, -wy],
+            #                 [wy, -wz, 0, wx],
+            #                 [wz, wy, -wx, 0]
+            #             ], dtype=float)
+            # self.ukf.Q[3:, 3:] = 0.5 * np.dot(w, self.ukf.x[3:]) * self.dt
 
-        self.pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
+            self.ukf.Q[3:, 3:] = np.eye(4) * 0.05   # 选择一个简单方式估计四元数的过程噪声
+        elif self.n == 5:   # x, y, z, θ, φ
+            self.ukf.P[3, 3] = 1  # θ的初始协方差
+            self.ukf.P[4, 4] = 0.4  # φ的初始协方差
 
-        # 球坐标系下的接收线圈朝向
-        theta, phi = state0[3], state0[4]
-        self.em2 = np.array([np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)]).T
+            self.ukf.Q[3, 3] = 0.5 * self.dt  # θ轴转动噪声
+            self.ukf.Q[4, 4] = 0.5 * self.dt  # φ轴转动噪声
+        else:
+            raise ValueError("状态量输入错误")
+
+        pos_em2 = self.parseState(state0)
+        self.pos, self.em2 = pos_em2[:3], pos_em2[3:]
 
     # def __init__(self, sensor_std, state0, state):
     #     '''
@@ -122,9 +135,13 @@ class Tracker:
         if self.m == CoilArray.coilNum:  # 纯线圈
             return EA
         elif self.m == CoilArray.coilNum + 2:  # 基于θ和φ的线圈+IMU
-            theta, phi = state[3], state[4]
-            EA[-1] = 10.24 * np.cos(theta)  # z
-            EA[-2] = 10.24 * np.sin(theta)  # sqrt(x^2 + y^2)
+            if self.n == 5:
+                theta, phi = state[3], state[4]
+                EA[-1] = 10.24 * np.cos(theta)  # z
+                EA[-2] = 10.24 * np.sin(theta)  # sqrt(x^2 + y^2)
+            elif self.n == 7:
+                EA[-1] = 10.24 * np.cos(em2[2])
+                EA[-2] = 10.24 * np.sin(np.sqrt(em2[0] ** 2 + em2[1] ** 2))
             return EA
         else:
             raise ValueError("观测量输入错误")
@@ -195,7 +212,8 @@ def runReal():
     :return:
     """
     qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-    state = np.array([0, 0, 200, np.pi / 4, -np.pi], dtype=float)
+    # state = np.array([0, 0, 200, np.pi / 4, -np.pi], dtype=float)   # 球坐标系
+    state = np.array([0, 0, 200, np.cos(np.pi / 8), np.sin(np.pi / 8), 0, 0], dtype=float)   # 四元数
 
     # 读取接收端数据
     procReadRec = Process(target=readRecData, args=(qADC, qGyro, qAcc))
@@ -209,7 +227,7 @@ def runReal():
     tracker = Tracker(currents, state)
 
     # 描绘3D轨迹
-    track3D(state, qList=[qADC, qGyro, qAcc], tracker=tracker)
+    track3D(state, qList=[qADC, qGyro, qAcc], tracker=tracker, quaternion=True)
 
 
 if __name__ == '__main__':

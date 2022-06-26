@@ -419,8 +419,8 @@ def run():
     :return:
     '''
     qADC, qGyro, qAcc = Queue(), Queue(), Queue()
-    state = np.array([0, 0, 200, np.pi / 4, 0], dtype=float)   # x, y, z, θ, φ 
-    # state = np.array([0, 0, 200, 0, 0, 0, 1], dtype=float)   # x, y, z, q0, q1, q2, q3
+    # state = np.array([0, 0, 200, np.pi / 4, -np.pi], dtype=float)   # 球坐标系 
+    state = np.array([0, 0, 200, np.cos(np.pi / 8), np.sin(np.pi / 8), 0, 1], dtype=float)   # 四元数
     state_se3 = se3(vector=np.array([0, 0, 0, 0, 0, 200]))
 
     # 读取接收端数据
@@ -435,7 +435,7 @@ def run():
     pred = Predictor(currents, state)
 
     # 描绘3D轨迹
-    track3D(state, qList=[qADC, qGyro, qAcc], tracker=pred, quaternion=False)
+    track3D(state, qList=[qADC, qGyro, qAcc], tracker=pred, quaternion=True)
 
 
 if __name__ == '__main__':
