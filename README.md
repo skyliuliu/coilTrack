@@ -2,11 +2,11 @@
 
 ## 1. 简介
 
-&emsp;&emsp;基于python3的线圈阵列磁定位方法，使用外置的线圈阵列发射AC交变磁场，在胶囊内置线圈中产生感应信号，实现对胶囊的定位。
+<br>基于python3的线圈阵列磁定位方法，使用外置的线圈阵列发射AC交变磁场，在胶囊内置的接收线圈中产生感应信号，通过采集和处理感应信号，计算接收线圈的位置和姿态，实现对胶囊的定位。
 
 ### 1.1 原理
 
-**假设：**
+<br>**假设：**
 
 - 线圈均可近似为磁偶极矩
 - 线圈之间相对静止
@@ -18,8 +18,6 @@
 + $\vec{r}$: 接收线圈的位置矢量
 + $\vec{e_{m_1}}$: 发射线圈的朝向
 + $\vec{e_{m_2}}$: 接收线圈的朝向
-+ $\theta$: $\vec{e_{m_2}}$与z轴的夹角
-+ $\phi$: $\vec{e_{m_2}}$在xy平面的投影与x轴的夹角
 
 当发射线圈中通正弦变化的电流$I(t)=Isin(2\pi ft+\phi)$时，接收线圈中产生的感应电动势E为：
 
@@ -41,10 +39,10 @@ $$
 
 ### 1.2 位姿的描述方法
 
-以上各项中，除了$\vec{r}$和$\vec{e_{m_2}}$，其它都是已知量。线圈的位姿可用下三种方式描述：
+以上各项中，除了$\vec{r}$和$\vec{e_{m_2}}$，其它都是已知量。线圈的位姿可用下三种方法描述：
 
-1. 位置+四元数
-   线圈的位置用$[x,\,y,\,z]$来描述。
+1. #### 位置+四元数
+   <br>线圈的位置用$[x,\,y,\,z]$来描述。
    胶囊的姿态用$q=[q_0,\,q_1,\,q_2,\,q_3]$描述，其对应的旋转矩阵为
    $$
    R=\left[
@@ -67,36 +65,36 @@ $$
 \right]
 $$
 
-2. 李代数$se(3)$
-   胶囊的姿态用$\xi=[\phi,\,\rho]\in R^6$描述，其对应的李群$SE(3)\in R^{4\times4}$为
+2. #### 李代数$se(3)$
+   <br>胶囊的姿态用$\xi=[\vec{\phi},\,\vec{\rho}]\in R^6$描述，其对应的李群$SE(3)\in R^{4\times4}$为
    $$
    T=exp(\xi^\wedge)=
    \left[
    \begin{matrix}
-   R & t \\
+   R & \vec{t} \\
    0^T & 1
    \end{matrix}
    \right]=
    \left[
    \begin{matrix}
-   exp(\phi^\wedge) & J\rho \\
+   exp({\vec{\phi}}^\wedge) & J\vec{\rho} \\
    0^T & 1
    \end{matrix}
    \right]
    $$
-
-&emsp;&emsp;其中，$\phi=\theta a$为旋转向量,表示其模长为$\theta$，方向为$a$
-&emsp;&emsp;上式有：
+   
+&emsp;&emsp;其中，$\vec{\phi}=\theta \vec{a}$为旋转向量,表示其模长为$\theta$，方向为$\vec{a}$，上式有：
 
 $$
-J=\frac{sin{\theta}}{\theta}I+(1-\frac{sin{\theta}}{\theta})aa^T+(1-\frac{cos{\theta}}{\theta})a^\wedge \\t=J\rho\\
+J=\frac{sin{\theta}}{\theta}I+(1-\frac{sin{\theta}}{\theta})\vec{a}{\vec{a}}^T+(1-\frac{cos{\theta}}{\theta}){\vec{a}}^\wedge \\\vec{t}=J\vec{\rho}\\
 \theta=arccos{\frac{tr(R)-1}{2}}
 $$
 
 &emsp;&emsp;线圈在世界坐标下的位置和朝向分别为
 
 $$
-\vec{r}=t\\\vec{e_{m_2}}=exp(\phi^\wedge)
+\vec{r}=\vec{t} \\
+\vec{e_{m_2}}=exp({\vec{\phi}}^\wedge)
 \left[
 \begin{matrix}
 0\\0\\1
@@ -104,8 +102,8 @@ $$
 \right]
 $$
 
-3. 位置+球坐标系
-   考虑到线圈是2D轴对称的圆柱形，可在球坐标系下描述其朝向，如下图所示：
+3. #### 位置+球坐标系
+   <br>考虑到线圈是2D轴对称的圆柱形，可在球坐标系下描述其朝向，如下图所示：
    <img src="./pic/coils.png" width="50%">
 
 &emsp;&emsp;以上图中的含义为：
@@ -116,11 +114,202 @@ $$
 + $\theta$: $\vec{e_{m_2}}$与z轴的夹角
 + $\phi$: $\vec{e_{m_2}}$在xy平面的投影与x轴的夹角
   
-  &emsp;&emsp;则线圈朝向可表示为：
+&emsp;&emsp;则线圈朝向可表示为：
   
   $$
   \vec{e_{m_2}}=[sin{\theta}cos{\phi},\,sin{\theta}sin{\phi},\,cos{\theta}]
   $$
+
+<br>以上三种方法对比如下：
+|方法|状态量 | 描述维度 | 对应的胶囊维度 | 计算复杂度
+|:---|:-----|:-----|:----|:----|
+|位置+四元数|$[x,\,y,\,z,\,q_0,\,q_1,\,q_2,\,q_3]$| 7 | 6 | 中 |
+|李代数|$[\vec{\phi},\,\vec{\rho}]$| 6 | 6 | 高 |
+|球坐标|$[x,\,y,\,z,\,\theta,\,\phi]$| 5 | 5 | 低 |
+
+<br>在本软件工程中，这三种方法均实现了，但最终实际的调试效果发现以**球坐标方法**最为合适。
+
+### 2.3 设计指标
+
+<table>
+   <tr>
+      <td></td>
+      <td>技术指标</td>
+      <td></td>
+      <td>备注</td>
+   </tr>
+   <tr>
+      <td rowspan="11">接收端</td>
+      <td>接收线圈数量</td>
+      <td>1</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>匝数</td>
+      <td>100</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>尺寸</td>
+      <td>>5mm * 2mm</td>
+      <td>外直径*长度</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>线圈导线裸线径</td>
+      <td>0.05mm</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>电阻</td>
+      <td>15Ω</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>电感</td>
+      <td>0.05mH</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>Q值</td>
+      <td>0.104  / 0.416</td>
+      <td>5KHz / 20KHz</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>接收感应电压</td>
+      <td>5~200uV</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>放大倍数</td>
+      <td>1000/5000</td>
+      <td>两级/三级放大</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>输出采样电压</td>
+      <td>5mV~0.2V/2.5mV~1V</td>
+      <td>两级/三级放大</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>信噪比</td>
+      <td>>100</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td rowspan="14">发射端</td>
+      <td>发射线圈驱动电流</td>
+      <td>≈2A</td>
+      <td>带电流检测功能，准确度3%</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>发射信号频率</td>
+      <td>5KHz~20KHz</td>
+      <td>5K，10K，20K三档可调</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>发射线圈的功耗</td>
+      <td><3W</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>发射线圈的轮流扫描时间</td>
+      <td>5~20ms</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>发射线圈矩阵的面积</td>
+      <td><=45cm * 45cm </td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>发射线圈个数</td>
+      <td><=16</td>
+      <td>争取使用9个</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>匝数</td>
+      <td>200</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>尺寸</td>
+      <td>20mm * 15mm</td>
+      <td>外直径*长度</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>线圈导线裸线径</td>
+      <td>0.6mm</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>电阻</td>
+      <td>0.6Ω</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>电感</td>
+      <td>0.31mH</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>Q值</td>
+      <td>17.35 / 69.4</td>
+      <td>5KHz/20KHz</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>发射线圈的发热温度</td>
+      <td><50℃</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>线圈一致性要求</td>
+      <td><5%</td>
+      <td>以电阻值为参考</td>
+   </tr>
+   <tr>
+      <td rowspan="3">定位性能</td>
+      <td>范围</td>
+      <td>40cm * 30cm * 30cm</td>
+      <td>磁控设备的x、y、z方向</td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>定位精度</td>
+      <td>位置±5mm,姿态角±5°</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+      <td>刷新频率</td>
+      <td>>2Hz</td>
+      <td></td>
+   </tr>
+   <tr>
+      <td></td>
+   </tr>
+</table>
 
 ## 2. 硬件
 
@@ -135,7 +324,7 @@ $$
 - distance = 100  ``发射线圈之间的距离[mm]``
 
 发射线圈之间按照如下方式等距排列，按照从左到右，从上至下的顺序依次编号
-`<img src="./pic/coilArray.png" width="50%">`
+<img src="./pic/coilArray.png" width="50%">
 
 ### 2.2接收线圈
 
