@@ -134,75 +134,63 @@ $$
 <table>
    <tr>
       <td></td>
-      <td colspan="3">技术指标</td>
-      <td></td>
+      <td colspan="2">技术指标</td>
       <td>备注</td>
    </tr>
    <tr>
       <td rowspan="12">接收端</td>
    </tr>
    <tr>
-      <td></td>
       <td>接收线圈数量</td>
       <td>1</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>匝数</td>
       <td>100</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>尺寸</td>
       <td>>5mm * 2mm</td>
       <td>外直径*长度</td>
    </tr>
    <tr>
-      <td></td>
       <td>线圈导线裸线径</td>
       <td>0.05mm</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>电阻</td>
       <td>15Ω</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>电感</td>
       <td>0.05mH</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>Q值</td>
       <td>0.104  / 0.416</td>
       <td>5KHz / 20KHz</td>
    </tr>
    <tr>
-      <td></td>
       <td>接收感应电压</td>
       <td>5~200uV</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>放大倍数</td>
       <td>1000/5000</td>
       <td>两级/三级放大</td>
    </tr>
    <tr>
-      <td></td>
       <td>输出采样电压</td>
       <td>5mV~0.2V/2.5mV~1V</td>
       <td>两级/三级放大</td>
    </tr>
    <tr>
-      <td></td>
       <td>信噪比</td>
       <td>>100</td>
       <td></td>
@@ -211,85 +199,71 @@ $$
       <td rowspan="15">发射端</td>
    </tr>
    <tr>
-      <td></td>
       <td>发射线圈驱动电流</td>
       <td>≈2A</td>
       <td>带电流检测功能，准确度3%</td>
    </tr>
    <tr>
-      <td></td>
       <td>发射信号频率</td>
       <td>5KHz~20KHz</td>
       <td>5K，10K，20K三档可调</td>
    </tr>
    <tr>
-      <td></td>
       <td>发射线圈的功耗</td>
       <td><3W</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>发射线圈的轮流扫描时间</td>
       <td>5~20ms</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>发射线圈矩阵的面积</td>
       <td><=45cm * 45cm </td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>发射线圈个数</td>
       <td><=16</td>
       <td>争取使用9个</td>
    </tr>
    <tr>
-      <td></td>
       <td>匝数</td>
       <td>200</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>尺寸</td>
       <td>20mm * 15mm</td>
       <td>外直径*长度</td>
    </tr>
    <tr>
-      <td></td>
       <td>线圈导线裸线径</td>
       <td>0.6mm</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>电阻</td>
       <td>0.6Ω</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>电感</td>
       <td>0.31mH</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>Q值</td>
       <td>17.35 / 69.4</td>
       <td>5KHz/20KHz</td>
    </tr>
    <tr>
-      <td></td>
       <td>发射线圈的发热温度</td>
       <td><50℃</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>线圈一致性要求</td>
       <td><5%</td>
       <td>以电阻值为参考</td>
@@ -298,24 +272,18 @@ $$
       <td rowspan="4">定位性能</td>
    </tr>
    <tr>
-      <td></td>
       <td>范围</td>
       <td>40cm * 30cm * 30cm</td>
       <td>磁控设备的x、y、z方向</td>
    </tr>
    <tr>
-      <td></td>
       <td>定位精度</td>
       <td>位置±5mm,姿态角±5°</td>
       <td></td>
    </tr>
    <tr>
-      <td></td>
       <td>刷新频率</td>
       <td>>2Hz</td>
-      <td></td>
-   </tr>
-   <tr>
       <td></td>
    </tr>
 </table>
