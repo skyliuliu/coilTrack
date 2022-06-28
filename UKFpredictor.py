@@ -18,7 +18,7 @@ plt.rcParams['axes.unicode_minus'] = False
 
 class Tracker:
     deltaT = 10e-3  # 相邻发射线圈产生的接收信号的间隔时间[s]
-    printBool = True  # 是否打印结果
+    printBool = False  # 是否打印结果
 
     def __init__(self, currents, state0):
         """
